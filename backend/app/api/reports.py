@@ -107,6 +107,19 @@ def collections_report(
 ):
     payments=db.scalars(select(Payment).where(Payment.status=="POSTED").order_by(Payment.payment_date.desc())).all()
     out=[]
+
+    sales=db.scalars(select(Sale).where(Sale.active.is_(True))).all()
+    for s in sales:
+        if s.down_payment<=0: continue
+        if date_from and s.confirmation_date<date_from: continue
+        if date_to and s.confirmation_date>date_to: continue
+        if stage_id and sale_stage_id(db,s)!=stage_id: continue
+        c=db.get(Customer,s.customer_id); prop=db.get(Property,s.property_id)
+        block=db.get(Block,prop.block_id); stage=db.get(ProjectStage,block.stage_id)
+        out.append({"date":s.confirmation_date,"customer":c.full_name,"identification":c.identification,
+            "stage":stage.name,"property":prop.code,"method":"ENTRADA","reference":"",
+            "amount":float(s.down_payment)})
+
     for p in payments:
         if date_from and p.payment_date<date_from: continue
         if date_to and p.payment_date>date_to: continue
