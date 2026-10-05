@@ -43,7 +43,7 @@ def create_reservation(payload:ReservationCreate,request:Request,db:Session=Depe
     return {"id":str(r.id)}
 
 @router.post("/reservations/{reservation_id}/cancel")
-def cancel_reservation(reservation_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("sales.manage"))):
+def cancel_reservation(reservation_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("reservations.release"))):
     r=db.get(Reservation,reservation_id)
     if not r or not r.active: raise HTTPException(404,"Reserva no encontrada")
     r.active=False
