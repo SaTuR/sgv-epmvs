@@ -68,9 +68,20 @@ def create_sale(payload:SaleCreate,db:Session=Depends(get_db),_:User=Depends(req
     customer=db.get(Customer,uuid.UUID(payload.customer_id)); prop=db.get(Property,uuid.UUID(payload.property_id))
     if not customer or not prop: raise HTTPException(404,"Cliente o predio no encontrado")
     if prop.status.code not in {"AVAILABLE","RESERVED"}: raise HTTPException(409,"El predio no puede confirmarse para compra")
+
+    reservation=None
+    if prop.status.code=="RESERVED":
+        if not payload.reservation_id:
+            raise HTTPException(409,"El predio está reservado y debe confirmarse desde su reserva activa")
+        reservation=db.get(Reservation,uuid.UUID(payload.reservation_id))
+        if not reservation or not reservation.active:
+            raise HTTPException(409,"La reserva ya no está activa")
+        if reservation.property_id!=prop.id or reservation.customer_id!=customer.id:
+            raise HTTPException(409,"La reserva no corresponde al cliente y predio seleccionados")
+
     if payload.down_payment>payload.sale_price: raise HTTPException(400,"La entrada no puede superar el precio de venta")
     financed=money(payload.sale_price-payload.down_payment)
-    sale=Sale(customer_id=customer.id,property_id=prop.id,reservation_id=uuid.UUID(payload.reservation_id) if payload.reservation_id else None,
+    sale=Sale(customer_id=customer.id,property_id=prop.id,reservation_id=reservation.id if reservation else None,
       confirmation_date=payload.confirmation_date or date.today(),sale_price=money(payload.sale_price),down_payment=money(payload.down_payment),
       financed_amount=financed,installment_count=payload.installment_count,frequency=payload.frequency,first_due_date=payload.first_due_date,notes=payload.notes)
     base=money(financed/Decimal(payload.installment_count))
@@ -81,9 +92,7 @@ def create_sale(payload:SaleCreate,db:Session=Depends(get_db),_:User=Depends(req
         sale.installments.append(Installment(number=n,due_date=due,amount=amount,paid_amount=0,status="PENDING"))
         total+=amount
     prop.status_id=prop_status(db,"PAYING" if financed>0 else "PAID").id
-    if payload.reservation_id:
-        r=db.get(Reservation,uuid.UUID(payload.reservation_id))
-        if r: r.active=False
+    if reservation: reservation.active=False
     db.add(sale); db.commit(); db.refresh(sale)
     return {"id":str(sale.id)}
 
