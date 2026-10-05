@@ -20,22 +20,32 @@ def client():
     return TestClient(app)
 
 
+QA_ADMIN_EMAIL="qa-admin@example.com"
+QA_ADMIN_PASSWORD="QaAdmin123!"
+
+
 def ensure_admin():
     db=SessionLocal()
     try:
         role=db.scalar(select(Role).where(Role.name=="Administrador"))
-        user=db.scalar(select(User).where(User.email=="qa-admin@epmvs.local"))
+        user=db.scalar(select(User).where(User.identification=="QA-ADMIN"))
         if not user:
             user=User(
                 identification="QA-ADMIN",
                 first_name="QA",
                 last_name="Administrador",
-                email="qa-admin@epmvs.local",
-                password_hash=hash_password("QaAdmin123!"),
+                email=QA_ADMIN_EMAIL,
+                password_hash=hash_password(QA_ADMIN_PASSWORD),
                 active=True,
                 roles=[role],
             )
-            db.add(user);db.commit()
+            db.add(user)
+        else:
+            user.email=QA_ADMIN_EMAIL
+            user.password_hash=hash_password(QA_ADMIN_PASSWORD)
+            user.active=True
+            user.roles=[role]
+        db.commit()
         return user.email
     finally:
         db.close()
@@ -43,8 +53,8 @@ def ensure_admin():
 
 @pytest.fixture(scope="session")
 def admin_headers(client):
-    ensure_admin()
-    r=client.post("/api/auth/login",json={"email":"qa-admin@epmvs.local","password":"QaAdmin123!"})
+    email=ensure_admin()
+    r=client.post("/api/auth/login",json={"email":email,"password":QA_ADMIN_PASSWORD})
     assert r.status_code==200, r.text
     return {"Authorization":"Bearer "+r.json()["access_token"]}
 
