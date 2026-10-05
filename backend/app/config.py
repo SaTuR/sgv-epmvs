@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "CAMBIAR_JWT_SECRET_KEY"
     access_token_expire_minutes: int = 60
     upload_path: str = "/app/storage"
+    public_base_url: str = "http://localhost:8080/api/public/documents"
     tz: str = "America/Guayaquil"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
