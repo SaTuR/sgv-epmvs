@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { FileImage, Layers3, Plus, Upload } from 'lucide-react'
 import { apiFetch } from '../api'
+import { binaryStatusBadgeClass } from '../utils/statusStyles'
 
 type Stage={id:string;name:string;description?:string}
 type Project={id:string;name:string;description?:string;stages:Stage[]}
@@ -30,7 +31,7 @@ export default function ProjectPage(){
     {stage&&<div className="mt-6 grid gap-5 xl:grid-cols-2">
       <section className="rounded-2xl border bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h3 className="font-semibold">Plano de {stage.name}</h3><p className="mt-1 text-sm text-slate-500">JPG, PNG, WEBP o PDF. Se conserva el historial de versiones.</p></div><FileImage className="text-[#3A6C32]"/></div>
       <label className="mt-5 flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-8 text-sm font-medium text-[#3A6C32]"><Upload className="h-5 w-5"/>Subir plano<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" className="hidden" onChange={e=>e.target.files?.[0]&&upload(e.target.files[0])}/></label>
-      <div className="mt-4 space-y-2">{maps.map(m=><div key={m.id} className="flex items-center justify-between rounded-xl border p-3"><div><p className="text-sm font-medium">{m.name}</p><p className="text-xs text-slate-500">Versión {m.version}</p></div><span className={'rounded-full px-2 py-1 text-xs '+(m.is_active?'bg-emerald-100 text-emerald-700':'bg-slate-100 text-slate-500')}>{m.is_active?'Activo':'Anterior'}</span></div>)}</div></section>
+      <div className="mt-4 space-y-2">{maps.map(m=><div key={m.id} className="flex items-center justify-between rounded-xl border p-3"><div><p className="text-sm font-medium">{m.name}</p><p className="text-xs text-slate-500">Versión {m.version}</p></div><span className={'inline-flex rounded-full px-2 py-1 text-xs font-semibold '+binaryStatusBadgeClass(m.is_active)}>{m.is_active?'Activo':'Anterior'}</span></div>)}</div></section>
       <section className="rounded-2xl border bg-white p-6 shadow-sm"><div className="flex items-center gap-2"><Layers3 className="text-[#3A6C32]"/><h3 className="font-semibold">Manzanas</h3></div>
       <form onSubmit={addBlock} className="mt-5 flex gap-2"><input value={blockName} onChange={e=>setBlockName(e.target.value)} className="flex-1 rounded-xl border px-3 py-2.5" placeholder="Ej. Manzana A"/><button className="inline-flex items-center gap-2 rounded-xl bg-[#3A6C32] px-4 text-sm font-semibold text-white"><Plus className="h-4 w-4"/>Agregar</button></form>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">{blocks.map(b=><div key={b.id} className="rounded-xl border p-4"><p className="font-semibold">{b.name}</p><p className="mt-1 text-xs text-slate-500">{stage.name}</p></div>)}</div>{!blocks.length&&<p className="mt-8 text-center text-sm text-slate-400">Aún no hay manzanas registradas.</p>}</section>
