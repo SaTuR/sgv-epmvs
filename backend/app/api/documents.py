@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_db, require_permission
 from app.config import settings
 from app.models import Block, Customer, Installment, IssuedDocument, Payment, Project, ProjectStage, Property, Sale, User
 from app.services.pdf_documents import account_statement, payment_receipt, payments_certificate
@@ -40,7 +40,7 @@ def sale_context(db:Session,sale:Sale,document:IssuedDocument,user:User):
         "stage_name":stage.name,"project_name":project.name,"installments":installments,"payments":payments,
         "current_balance":current_balance,"total_paid":sale.down_payment+sum((p.amount for p in payments),Decimal("0")),
         "status_label":status_label,"user_name":user.full_name,
-        "verification_url":f"{settings.public_base_url}/verify/{document.verification_code}",
+        "verification_url":f"{settings.public_base_url}/{document.verification_code}",
     }
 
 @router.get("/payments/{payment_id}/receipt.pdf")
@@ -79,3 +79,73 @@ def verify_document(verification_code:uuid.UUID,db:Session=Depends(get_db)):
     d=db.scalar(select(IssuedDocument).where(IssuedDocument.verification_code==verification_code))
     if not d: raise HTTPException(404,"Documento no válido")
     return {"valid":True,"document_number":d.document_number,"document_type":d.document_type,"issued_at":d.created_at}
+
+
+DOCUMENT_LABELS={
+    "PAYMENT_RECEIPT":"Comprobante de pago",
+    "ACCOUNT_STATEMENT":"Estado de cuenta",
+    "PAYMENTS_CERTIFICATE":"Certificado de pagos",
+}
+
+@router.get("/documents")
+def list_documents(
+    q:str|None=None,
+    document_type:str|None=None,
+    db:Session=Depends(get_db),
+    _:User=Depends(require_permission("documents.view")),
+):
+    rows=db.scalars(select(IssuedDocument).order_by(IssuedDocument.created_at.desc())).all()
+    out=[]
+    for d in rows:
+        sale=db.get(Sale,d.sale_id) if d.sale_id else None
+        payment=db.get(Payment,d.payment_id) if d.payment_id else None
+        if not sale and payment: sale=db.get(Sale,payment.sale_id)
+        customer=db.get(Customer,sale.customer_id) if sale else None
+        prop=db.get(Property,sale.property_id) if sale else None
+        item={
+            "id":str(d.id),
+            "document_type":d.document_type,
+            "document_label":DOCUMENT_LABELS.get(d.document_type,d.document_type),
+            "document_number":d.document_number,
+            "verification_code":str(d.verification_code),
+            "created_at":d.created_at,
+            "customer":customer.full_name if customer else "",
+            "identification":customer.identification if customer else "",
+            "property":prop.code if prop else "",
+            "sale_id":str(sale.id) if sale else None,
+            "payment_id":str(payment.id) if payment else None,
+        }
+        if document_type and item["document_type"]!=document_type: continue
+        if q:
+            term=q.strip().lower()
+            hay=" ".join([item["document_number"],item["customer"],item["identification"],item["property"]]).lower()
+            if term not in hay: continue
+        out.append(item)
+    return out
+
+@router.get("/documents/{document_id}/download.pdf")
+def download_document(document_id:uuid.UUID,db:Session=Depends(get_db),user:User=Depends(require_permission("documents.view"))):
+    d=db.get(IssuedDocument,document_id)
+    if not d: raise HTTPException(404,"Documento no encontrado")
+    if d.document_type=="PAYMENT_RECEIPT":
+        payment=db.get(Payment,d.payment_id)
+        sale=db.get(Sale,payment.sale_id) if payment else None
+        if not payment or not sale: raise HTTPException(404,"Pago asociado no encontrado")
+        ctx=sale_context(db,sale,d,user)
+        previous_payments=db.scalars(select(Payment).where(Payment.sale_id==sale.id,Payment.status=="POSTED",Payment.created_at<payment.created_at)).all()
+        paid_before=sum((p.amount for p in previous_payments),Decimal("0"))
+        ctx["payment"]=payment
+        ctx["previous_balance"]=sale.financed_amount-paid_before
+        ctx["balance_after"]=sale.financed_amount-paid_before-payment.amount
+        pdf=payment_receipt(ctx)
+    elif d.document_type=="ACCOUNT_STATEMENT":
+        sale=db.get(Sale,d.sale_id)
+        if not sale: raise HTTPException(404,"Compra asociada no encontrada")
+        pdf=account_statement(sale_context(db,sale,d,user))
+    elif d.document_type=="PAYMENTS_CERTIFICATE":
+        sale=db.get(Sale,d.sale_id)
+        if not sale: raise HTTPException(404,"Compra asociada no encontrada")
+        pdf=payments_certificate(sale_context(db,sale,d,user))
+    else:
+        raise HTTPException(400,"Tipo de documento no soportado")
+    return Response(pdf,media_type="application/pdf",headers={"Content-Disposition":f'attachment; filename="{d.document_number}.pdf"'})
