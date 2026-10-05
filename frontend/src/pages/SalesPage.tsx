@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { BadgeCheck, CalendarClock, Plus, ShoppingCart } from 'lucide-react'
+import { BadgeCheck, CalendarClock, Eye, Plus, ShoppingCart } from 'lucide-react'
 import { apiFetch } from '../api'
 
 const today=()=>new Date().toISOString().slice(0,10)
@@ -10,17 +10,14 @@ export default function SalesPage(){
   const [properties,setProperties]=useState<any[]>([])
   const [reservations,setReservations]=useState<any[]>([])
   const [sales,setSales]=useState<any[]>([])
-  const [open,setOpen]=useState<'reservation'|'sale'|null>(null)
+  const [open,setOpen]=useState<'reservation'|'sale'|'installments'|null>(null)
+  const [installments,setInstallments]=useState<any[]>([])
+  const [selectedSale,setSelectedSale]=useState<any>(null)
   const [resForm,setResForm]=useState<any>({customer_id:'',property_id:'',reservation_date:today(),expires_on:'',notes:''})
   const [saleForm,setSaleForm]=useState<any>({customer_id:'',property_id:'',reservation_id:'',sale_price:'',down_payment:'0',installment_count:'12',frequency:'MONTHLY',first_due_date:today(),notes:''})
 
   async function load(){
-    const [c,p,r,s]=await Promise.all([
-      apiFetch('/customers'),
-      apiFetch('/properties'),
-      apiFetch('/reservations'),
-      apiFetch('/sales')
-    ])
+    const [c,p,r,s]=await Promise.all([apiFetch('/customers'),apiFetch('/properties'),apiFetch('/reservations'),apiFetch('/sales')])
     setCustomers(c);setProperties(p);setReservations(r);setSales(s)
   }
   useEffect(()=>{load()},[])
@@ -41,13 +38,14 @@ export default function SalesPage(){
 
   async function saveSale(e:FormEvent){
     e.preventDefault()
-    await apiFetch('/sales',{method:'POST',body:JSON.stringify({
-      ...saleForm,
-      sale_price:Number(saleForm.sale_price),
-      down_payment:Number(saleForm.down_payment||0),
-      installment_count:Number(saleForm.installment_count)
-    })})
+    await apiFetch('/sales',{method:'POST',body:JSON.stringify({...saleForm,sale_price:Number(saleForm.sale_price),down_payment:Number(saleForm.down_payment||0),installment_count:Number(saleForm.installment_count)})})
     setOpen(null);await load()
+  }
+
+  async function showInstallments(s:any){
+    setSelectedSale(s)
+    setInstallments(await apiFetch('/sales/'+s.id+'/installments'))
+    setOpen('installments')
   }
 
   return <div>
@@ -62,7 +60,7 @@ export default function SalesPage(){
     </div>
 
     {tab==='reservations'?<div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Predio</th><th className="px-5 py-3">Reserva</th><th className="px-5 py-3">Vence</th><th></th></tr></thead><tbody>{reservations.map(r=><tr key={r.id} className="border-t"><td className="px-5 py-4 font-medium">{r.customer}</td><td className="px-5 py-4">{r.property}</td><td className="px-5 py-4">{r.reservation_date}</td><td className="px-5 py-4">{r.expires_on||'-'}</td><td className="px-5 py-4 text-right"><button onClick={()=>fromReservation(r)} className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">Confirmar compra</button></td></tr>)}</tbody></table>{!reservations.length&&<div className="py-14 text-center text-slate-400"><CalendarClock className="mx-auto h-10 w-10"/><p className="mt-3">No hay reservas activas.</p></div>}</div>
-    :<div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Predio</th><th className="px-5 py-3">Precio</th><th className="px-5 py-3">Pagado</th><th className="px-5 py-3">Saldo</th></tr></thead><tbody>{sales.map(s=><tr key={s.id} className="border-t"><td className="px-5 py-4 font-medium">{s.customer}</td><td className="px-5 py-4">{s.property}</td><td className="px-5 py-4">$ {s.sale_price.toFixed(2)}</td><td className="px-5 py-4 text-emerald-700">$ {s.paid.toFixed(2)}</td><td className="px-5 py-4 font-semibold">$ {s.balance.toFixed(2)}</td></tr>)}</tbody></table>{!sales.length&&<div className="py-14 text-center text-slate-400"><ShoppingCart className="mx-auto h-10 w-10"/><p className="mt-3">No hay compras confirmadas.</p></div>}</div>}
+    :<div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Predio</th><th className="px-5 py-3">Precio</th><th className="px-5 py-3">Pagado</th><th className="px-5 py-3">Saldo</th><th></th></tr></thead><tbody>{sales.map(s=><tr key={s.id} className="border-t"><td className="px-5 py-4 font-medium">{s.customer}</td><td className="px-5 py-4">{s.property}</td><td className="px-5 py-4">$ {s.sale_price.toFixed(2)}</td><td className="px-5 py-4 text-emerald-700">$ {s.paid.toFixed(2)}</td><td className="px-5 py-4 font-semibold">$ {s.balance.toFixed(2)}</td><td className="px-5 py-4 text-right"><button onClick={()=>showInstallments(s)} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold"><Eye className="h-4 w-4"/>Ver cuotas</button></td></tr>)}</tbody></table>{!sales.length&&<div className="py-14 text-center text-slate-400"><ShoppingCart className="mx-auto h-10 w-10"/><p className="mt-3">No hay compras confirmadas.</p></div>}</div>}
 
     {open==='reservation'&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><form onSubmit={saveReservation} className="w-full max-w-xl rounded-2xl bg-white p-6"><h3 className="text-xl font-semibold">Nueva reserva</h3><div className="mt-5 grid gap-4">
       <label>Cliente<select required value={resForm.customer_id} onChange={e=>setResForm({...resForm,customer_id:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{customers.map(c=><option key={c.id} value={c.id}>{c.identification} · {c.full_name}</option>)}</select></label>
@@ -78,5 +76,7 @@ export default function SalesPage(){
       <label>Número de cuotas<input required type="number" min="1" value={saleForm.installment_count} onChange={e=>setSaleForm({...saleForm,installment_count:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
       <label>Primera cuota<input required type="date" value={saleForm.first_due_date} onChange={e=>setSaleForm({...saleForm,first_due_date:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
     </div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={()=>setOpen(null)} className="rounded-xl border px-4 py-2.5">Cancelar</button><button className="rounded-xl bg-[#3A6C32] px-5 py-2.5 font-semibold text-white">Confirmar compra</button></div></form></div>}
+
+    {open==='installments'&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6"><div className="flex items-center justify-between"><div><h3 className="text-xl font-semibold">Plan de pagos</h3><p className="mt-1 text-sm text-slate-500">{selectedSale?.customer} · {selectedSale?.property}</p></div><button onClick={()=>setOpen(null)}>✕</button></div><div className="mt-5 overflow-hidden rounded-xl border"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">Vencimiento</th><th className="px-4 py-3">Cuota</th><th className="px-4 py-3">Pagado</th><th className="px-4 py-3">Saldo</th><th className="px-4 py-3">Estado</th></tr></thead><tbody>{installments.map(i=><tr key={i.id} className="border-t"><td className="px-4 py-3">{i.number}</td><td className="px-4 py-3">{i.due_date}</td><td className="px-4 py-3">$ {i.amount.toFixed(2)}</td><td className="px-4 py-3">$ {i.paid_amount.toFixed(2)}</td><td className="px-4 py-3 font-medium">$ {i.balance.toFixed(2)}</td><td className="px-4 py-3"><span className={'rounded-full px-2 py-1 text-xs '+(i.status==='PAID'?'bg-emerald-100 text-emerald-700':i.status==='OVERDUE'?'bg-red-100 text-red-700':i.status==='PARTIAL'?'bg-amber-100 text-amber-700':'bg-slate-100 text-slate-600')}>{i.status}</span></td></tr>)}</tbody></table></div></div></div>}
   </div>
 }
