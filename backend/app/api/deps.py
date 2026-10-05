@@ -39,3 +39,12 @@ def require_permission(code: str):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para esta acción")
         return user
     return checker
+
+
+def require_any_permission(*codes: str):
+    def checker(user: User = Depends(get_current_user)):
+        granted = {p.code for role in user.roles for p in role.permissions}
+        if "system.admin" not in granted and not any(code in granted for code in codes):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para esta acción")
+        return user
+    return checker
