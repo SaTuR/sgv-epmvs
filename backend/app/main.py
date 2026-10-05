@@ -1,36 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.api.auth import router as auth_router
 from app.config import settings
 from app.db import db_health
 
-app = FastAPI(
-    title=settings.app_name,
-    version="0.1.0",
-    docs_url="/api/docs",
-    openapi_url="/api/openapi.json",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title=settings.app_name, version="0.2.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.include_router(auth_router)
 
 @app.get("/api/health")
 def health():
     ok = db_health()
-    return {
-        "status": "ok" if ok else "degraded",
-        "database": "ok" if ok else "error",
-        "application": settings.app_name,
-    }
+    return {"status": "ok" if ok else "degraded", "database": "ok" if ok else "error", "application": settings.app_name}
 
 @app.get("/api")
 def api_root():
-    return {
-        "name": settings.app_name,
-        "version": "0.1.0",
-        "project": "San Joaquín",
-    }
+    return {"name": settings.app_name, "version": "0.2.0", "project": "San Joaquín"}

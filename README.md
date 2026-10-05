@@ -1,49 +1,31 @@
 # Sistema de Gestión y Venta EPMVS
 
-Sistema web para la Empresa Pública Municipal de Vivienda de Samborondón, orientado a la gestión de proyectos habitacionales, predios, clientes, reservas, ventas, cuotas, pagos, cartera, certificados y reportes.
-
-Proyecto inicial: **San Joaquín**  
-Etapas iniciales: **Etapa 1** y **Etapa 2**
+Sistema web para la Empresa Pública Municipal de Vivienda de Samborondón. Proyecto inicial: **San Joaquín**, Etapas **1 y 2**.
 
 ## Stack
+React + TypeScript + Tailwind, FastAPI, PostgreSQL, Alembic, Nginx y Docker Compose.
 
-- React + TypeScript + Vite + Tailwind CSS
-- FastAPI + Python
-- PostgreSQL
-- Alembic
-- Nginx
-- Docker Compose
+## Identidad visual
+Se utiliza el logo institucional EPM Vivienda Samborondón y la paleta base: verde oscuro `#3A6C32`, verde `#52AD56` y amarillo `#FAB71C`.
 
 ## Inicio rápido
-
 ```bash
 cp .env.example .env
 docker compose up -d --build
-```
-
-Abrir:
-
-- Sistema: http://localhost:8080
-- API health: http://localhost:8080/api/health
-- Swagger: http://localhost:8080/api/docs
-
-## Producción
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-```
-
-## Base de datos
-
-```bash
 docker compose exec backend alembic upgrade head
+docker compose exec backend python -m app.cli seed
 ```
 
-## Backups
-
+Crear el administrador inicial:
 ```bash
-./scripts/backup-db.sh
-./scripts/backup-all.sh
+docker compose exec backend python -m app.cli create-admin \
+  --identification 0000000000 \
+  --first-name Admin \
+  --last-name EPMVS \
+  --email admin@epmvs.local \
+  --password 'CAMBIAR-CLAVE'
 ```
 
-Nunca subir `.env`, respaldos, documentos ciudadanos ni archivos de producción.
+Abrir `http://localhost:8080`. Swagger: `http://localhost:8080/api/docs`.
+
+Nunca subir `.env`, datos reales de ciudadanos, documentos, respaldos o secretos al repositorio.
