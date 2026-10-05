@@ -54,13 +54,14 @@ def sales(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
     out=[]
     for s in rows:
         c=db.get(Customer,s.customer_id); p=db.get(Property,s.property_id)
-        paid=sum((i.paid_amount for i in s.installments),Decimal("0"))
+        installment_paid=sum((i.paid_amount for i in s.installments),Decimal("0"))
+        paid=s.down_payment+installment_paid
         total=sum((i.amount for i in s.installments),Decimal("0"))
         overdue=sum((i.amount-i.paid_amount for i in s.installments if i.due_date<date.today() and i.status!="PAID"),Decimal("0"))
         out.append({"id":str(s.id),"customer_id":str(s.customer_id),"customer":c.full_name if c else "",
           "property_id":str(s.property_id),"property":p.code if p else "","confirmation_date":s.confirmation_date,
           "sale_price":float(s.sale_price),"down_payment":float(s.down_payment),"financed_amount":float(s.financed_amount),
-          "installment_count":s.installment_count,"paid":float(paid),"balance":float(total-paid),"overdue":float(overdue)})
+          "installment_count":s.installment_count,"paid":float(paid),"balance":float(total-installment_paid),"overdue":float(overdue)})
     return out
 
 @router.post("/sales")
