@@ -88,7 +88,7 @@ def create_sale(payload:SaleCreate,request:Request,db:Session=Depends(get_db),cu
     financed=money(payload.sale_price-payload.down_payment)
     sale=Sale(customer_id=customer.id,property_id=prop.id,reservation_id=reservation.id if reservation else None,
       confirmation_date=payload.confirmation_date or date.today(),sale_price=money(payload.sale_price),down_payment=money(payload.down_payment),
-      financed_amount=financed,installment_count=payload.installment_count,frequency=payload.frequency,first_due_date=payload.first_due_date,notes=payload.notes)
+      financed_amount=financed,installment_count=payload.installment_count if financed>0 else 0,frequency=payload.frequency,first_due_date=payload.first_due_date,notes=payload.notes)
     if financed>0:
         base=money(financed/Decimal(payload.installment_count))
         total=Decimal("0")
