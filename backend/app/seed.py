@@ -6,7 +6,7 @@ PERMISSIONS = [
     ("system.admin","Administración total"),("dashboard.view","Ver dashboard"),("users.manage","Administrar usuarios"),
     ("roles.manage","Administrar roles y permisos"),("customers.manage","Administrar clientes"),
     ("projects.manage","Administrar proyectos y etapas"),("properties.manage","Administrar predios"),
-    ("sales.manage","Administrar ventas y reservas"),("reservations.release","Liberar solar reservado"),("payments.manage","Registrar y administrar pagos"),
+    ("sales.manage","Administrar ventas y reservas"),("reservations.release","Liberar solar reservado"),("payments.manage","Registrar y administrar pagos"),("documents.view","Consultar certificados y documentos"),
     ("receivables.view","Consultar cuentas por cobrar"),("reports.view","Consultar reportes"),("audit.view","Consultar auditoría"),
 ]
 ROLES = [
