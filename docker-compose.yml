@@ -1,0 +1,70 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: sgv-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sgv_epmvs}
+      POSTGRES_USER: ${POSTGRES_USER:-sgv_epmvs}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CAMBIAR_CLAVE_SEGURA}
+      TZ: ${TZ:-America/Guayaquil}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sgv_epmvs} -d ${POSTGRES_DB:-sgv_epmvs}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    container_name: sgv-backend
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+      - ./storage:/app/storage
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    container_name: sgv-frontend
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    environment:
+      VITE_API_URL: /api
+    command: npm run dev -- --host 0.0.0.0
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: sgv-nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/conf.d/sgv-epmvs.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    name: sgv_postgres_data
+  frontend_node_modules:
+    name: sgv_frontend_node_modules
