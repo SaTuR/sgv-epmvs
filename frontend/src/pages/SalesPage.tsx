@@ -4,7 +4,7 @@ import { apiDownload, apiFetch } from '../api'
 
 const today=()=>new Date().toISOString().slice(0,10)
 
-export default function SalesPage(){
+export default function SalesPage({permissions}:{permissions:string[]}){
   const [tab,setTab]=useState<'reservations'|'sales'>('reservations')
   const [customers,setCustomers]=useState<any[]>([])
   const [properties,setProperties]=useState<any[]>([])
@@ -48,6 +48,14 @@ export default function SalesPage(){
     setOpen('installments')
   }
 
+  const canRelease=permissions.includes('system.admin')||permissions.includes('reservations.release')
+
+  async function releaseReservation(r:any){
+    if(!confirm('¿Liberar el solar '+r.property+' reservado por '+r.customer+'? El solar volverá a estado Disponible.')) return
+    await apiFetch('/reservations/'+r.id+'/cancel',{method:'POST'})
+    await load()
+  }
+
   return <div>
     <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div><p className="text-sm font-semibold text-[#52AD56]">Comercialización</p><h2 className="mt-1 text-2xl font-semibold">Reservas y ventas</h2><p className="mt-1 text-sm text-slate-500">Del lote disponible a la compra confirmada.</p></div>
@@ -59,7 +67,7 @@ export default function SalesPage(){
       <button onClick={()=>setTab('sales')} className={'rounded-xl px-4 py-2 text-sm font-semibold '+(tab==='sales'?'bg-[#3A6C32] text-white':'border bg-white')}>Compras confirmadas</button>
     </div>
 
-    {tab==='reservations'?<div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Predio</th><th className="px-5 py-3">Reserva</th><th className="px-5 py-3">Vence</th><th></th></tr></thead><tbody>{reservations.map(r=><tr key={r.id} className="border-t"><td className="px-5 py-4 font-medium">{r.customer}</td><td className="px-5 py-4">{r.property}</td><td className="px-5 py-4">{r.reservation_date}</td><td className="px-5 py-4">{r.expires_on||'-'}</td><td className="px-5 py-4 text-right"><button onClick={()=>fromReservation(r)} className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">Confirmar compra</button></td></tr>)}</tbody></table>{!reservations.length&&<div className="py-14 text-center text-slate-400"><CalendarClock className="mx-auto h-10 w-10"/><p className="mt-3">No hay reservas activas.</p></div>}</div>
+    {tab==='reservations'?<div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Predio</th><th className="px-5 py-3">Reserva</th><th className="px-5 py-3">Vence</th><th></th></tr></thead><tbody>{reservations.map(r=><tr key={r.id} className="border-t"><td className="px-5 py-4 font-medium">{r.customer}</td><td className="px-5 py-4">{r.property}</td><td className="px-5 py-4">{r.reservation_date}</td><td className="px-5 py-4">{r.expires_on||'-'}</td><td className="px-5 py-4 text-right"><div className="flex justify-end gap-2"><button onClick={()=>fromReservation(r)} className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">Confirmar compra</button>{canRelease&&<button onClick={()=>releaseReservation(r)} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">Liberar solar</button>}</div></td></tr>)}</tbody></table>{!reservations.length&&<div className="py-14 text-center text-slate-400"><CalendarClock className="mx-auto h-10 w-10"/><p className="mt-3">No hay reservas activas.</p></div>}</div>
     :<div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Predio</th><th className="px-5 py-3">Precio</th><th className="px-5 py-3">Pagado</th><th className="px-5 py-3">Saldo</th><th className="px-5 py-3 text-right">Documentos</th></tr></thead><tbody>{sales.map(s=><tr key={s.id} className="border-t"><td className="px-5 py-4 font-medium">{s.customer}</td><td className="px-5 py-4">{s.property}</td><td className="px-5 py-4">$ {s.sale_price.toFixed(2)}</td><td className="px-5 py-4 text-emerald-700">$ {s.paid.toFixed(2)}</td><td className="px-5 py-4 font-semibold">$ {s.balance.toFixed(2)}</td><td className="px-5 py-4"><div className="flex justify-end gap-2"><button onClick={()=>showInstallments(s)} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold"><Eye className="h-4 w-4"/>Cuotas</button><button onClick={()=>apiDownload('/sales/'+s.id+'/statement.pdf','estado-cuenta.pdf')} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-[#3A6C32]"><FileText className="h-4 w-4"/>Estado</button><button onClick={()=>apiDownload('/sales/'+s.id+'/payments-certificate.pdf','certificado-pagos.pdf')} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-[#3A6C32]"><FileCheck2 className="h-4 w-4"/>Certificado</button></div></td></tr>)}</tbody></table>{!sales.length&&<div className="py-14 text-center text-slate-400"><ShoppingCart className="mx-auto h-10 w-10"/><p className="mt-3">No hay compras confirmadas.</p></div>}</div>}
 
     {open==='reservation'&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><form onSubmit={saveReservation} className="w-full max-w-xl rounded-2xl bg-white p-6"><h3 className="text-xl font-semibold">Nueva reserva</h3><div className="mt-5 grid gap-4">
