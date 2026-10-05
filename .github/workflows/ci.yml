@@ -9,6 +9,25 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: sgv_epmvs
+          POSTGRES_USER: sgv_epmvs
+          POSTGRES_PASSWORD: qa_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sgv_epmvs -d sgv_epmvs"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://sgv_epmvs:qa_password@localhost:5432/sgv_epmvs
+      JWT_SECRET_KEY: qa_jwt_secret
+      SECRET_KEY: qa_secret
+      PUBLIC_BASE_URL: http://localhost:8000/api/public/documents
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,6 +35,10 @@ jobs:
           python-version: '3.12'
       - run: pip install -r backend/requirements.txt
       - run: python -m compileall backend/app
+      - working-directory: backend
+        run: alembic upgrade head
+      - working-directory: backend
+        run: pytest -q
 
   frontend:
     runs-on: ubuntu-latest
