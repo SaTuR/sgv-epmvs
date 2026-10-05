@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AlertCircle, Download, FileBarChart2, Loader2 } from 'lucide-react'
 import { apiDownload, apiFetch } from '../api'
+import { propertyStatusBadgeClass } from '../utils/statusStyles'
 
 type Tab='properties'|'collections'|'receivables'
 const today=()=>new Date().toISOString().slice(0,10)
@@ -115,7 +116,7 @@ export default function ReportsPage(){
     <div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm">
       {loading?<div className="flex items-center justify-center gap-2 py-16 text-slate-500"><Loader2 className="h-5 w-5 animate-spin"/>Cargando reporte…</div>:
       <div className="overflow-x-auto">
-        {tab==='properties'&&<table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">Código</th><th className="px-4 py-3">Etapa</th><th className="px-4 py-3">Manzana</th><th className="px-4 py-3">Lote</th><th className="px-4 py-3">Área</th><th className="px-4 py-3">Precio</th><th className="px-4 py-3">Estado</th></tr></thead><tbody>{rows.map((r:any)=><tr key={r.code} className="border-t"><td className="px-4 py-3 font-medium">{r.code}</td><td className="px-4 py-3">{r.stage}</td><td className="px-4 py-3">{r.block}</td><td className="px-4 py-3">{r.lot}</td><td className="px-4 py-3">{Number(r.area_m2||0).toFixed(2)} m²</td><td className="px-4 py-3">$ {Number(r.total_price||0).toFixed(2)}</td><td className="px-4 py-3">{r.status}</td></tr>)}</tbody></table>}
+        {tab==='properties'&&<table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">Código</th><th className="px-4 py-3">Etapa</th><th className="px-4 py-3">Manzana</th><th className="px-4 py-3">Lote</th><th className="px-4 py-3">Área</th><th className="px-4 py-3">Precio</th><th className="px-4 py-3">Estado</th></tr></thead><tbody>{rows.map((r:any)=><tr key={r.code} className="border-t"><td className="px-4 py-3 font-medium">{r.code}</td><td className="px-4 py-3">{r.stage}</td><td className="px-4 py-3">{r.block}</td><td className="px-4 py-3">{r.lot}</td><td className="px-4 py-3">{Number(r.area_m2||0).toFixed(2)} m²</td><td className="px-4 py-3">$ {Number(r.total_price||0).toFixed(2)}</td><td className="px-4 py-3"><span className={'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold '+propertyStatusBadgeClass(r.status)}>{r.status}</span></td></tr>)}</tbody></table>}
 
         {tab==='collections'&&<table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3">Etapa</th><th className="px-4 py-3">Predio</th><th className="px-4 py-3">Forma</th><th className="px-4 py-3">Referencia</th><th className="px-4 py-3 text-right">Valor</th></tr></thead><tbody>{rows.map((r:any,i:number)=><tr key={i} className="border-t"><td className="px-4 py-3">{r.date||'-'}</td><td className="px-4 py-3 font-medium">{r.customer||'-'}</td><td className="px-4 py-3">{r.stage||'-'}</td><td className="px-4 py-3">{r.property||'-'}</td><td className="px-4 py-3">{r.method||'-'}</td><td className="px-4 py-3">{r.reference||'-'}</td><td className="px-4 py-3 text-right font-semibold">$ {Number(r.amount||0).toFixed(2)}</td></tr>)}</tbody></table>}
 
