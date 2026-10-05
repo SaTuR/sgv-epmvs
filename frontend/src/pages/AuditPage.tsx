@@ -3,7 +3,17 @@ import { History, Search } from 'lucide-react'
 import { apiFetch } from '../api'
 
 const ACTIONS:any={
-  USER_CREATE:'Usuario creado',USER_UPDATE:'Usuario actualizado',USER_PASSWORD_RESET:'Contraseña cambiada',ROLE_UPDATE:'Rol actualizado'
+  USER_CREATE:'Usuario creado',
+  USER_UPDATE:'Usuario actualizado',
+  USER_PASSWORD_RESET:'Contraseña cambiada',
+  ROLE_UPDATE:'Rol actualizado',
+  CUSTOMER_CREATE:'Cliente creado',
+  CUSTOMER_UPDATE:'Cliente actualizado',
+  PROPERTY_CREATE:'Predio creado',
+  RESERVATION_CREATE:'Reserva creada',
+  RESERVATION_CANCEL:'Reserva cancelada',
+  SALE_CONFIRM:'Compra confirmada',
+  PAYMENT_CREATE:'Pago registrado',
 }
 
 export default function AuditPage(){
