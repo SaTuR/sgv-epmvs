@@ -13,6 +13,7 @@ import ReceivablesPage from './pages/ReceivablesPage'
 import ReportsPage from './pages/ReportsPage'
 import SecurityPage from './pages/SecurityPage'
 import AuditPage from './pages/AuditPage'
+import CertificatesPage from './pages/CertificatesPage'
 import type { SessionUser } from './types'
 
 export default function App(){
@@ -31,6 +32,7 @@ export default function App(){
     if(active==='Reservas y ventas')return <SalesPage permissions={user?.permissions||[]}/>
     if(active==='Pagos')return <PaymentsPage/>
     if(active==='Cartera')return <ReceivablesPage/>
+    if(active==='Certificados')return <CertificatesPage/>
     if(active==='Reportes')return <ReportsPage/>
     if(active==='Usuarios y permisos')return <SecurityPage/>
     if(active==='Auditoría')return <AuditPage/>
