@@ -13,3 +13,6 @@ bcrypt==4.0.1
 python-dateutil==2.9.0.post0
 reportlab==4.2.5
 qrcode[pil]==8.0
+
+pytest==8.3.4
+httpx==0.28.1
