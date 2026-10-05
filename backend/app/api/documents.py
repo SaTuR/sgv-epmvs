@@ -38,7 +38,7 @@ def sale_context(db:Session,sale:Sale,document:IssuedDocument,user:User):
     return {
         "document":document,"sale":sale,"customer":customer,"property":prop,"block_name":block.name,
         "stage_name":stage.name,"project_name":project.name,"installments":installments,"payments":payments,
-        "current_balance":current_balance,"total_paid":sum((p.amount for p in payments),Decimal("0")),
+        "current_balance":current_balance,"total_paid":sale.down_payment+sum((p.amount for p in payments),Decimal("0")),
         "status_label":status_label,"user_name":user.full_name,
         "verification_url":f"{settings.public_base_url}/verify/{document.verification_code}",
     }
