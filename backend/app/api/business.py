@@ -1,6 +1,6 @@
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -8,6 +8,7 @@ from app.api.deps import get_current_user, get_db, require_permission
 from app.config import settings
 from app.models import Block, Customer, Project, ProjectStage, Property, PropertyStatus, StageMap, User
 from app.schemas.business import BlockCreate, CustomerCreate, CustomerUpdate, PropertyCreate
+from app.services.audit import audit
 
 router = APIRouter(prefix="/api", tags=["Gestión comercial"])
 
@@ -26,20 +27,26 @@ def list_customers(q: str | None = None, db: Session = Depends(get_db), _: User 
     return [customer_dict(x) for x in db.scalars(stmt).all()]
 
 @router.post("/customers")
-def create_customer(payload: CustomerCreate, db: Session = Depends(get_db), _: User = Depends(require_permission("customers.manage"))):
+def create_customer(payload: CustomerCreate, request: Request, db: Session = Depends(get_db), current: User = Depends(require_permission("customers.manage"))):
     c=Customer(**payload.model_dump())
     db.add(c)
-    try: db.commit()
+    try:
+        db.flush()
+        audit(db,current,"CUSTOMER_CREATE","customer",c.id,{"identification":c.identification,"name":c.full_name},request)
+        db.commit()
     except IntegrityError:
         db.rollback(); raise HTTPException(409, "Ya existe un cliente con esa identificación")
     db.refresh(c); return customer_dict(c)
 
 @router.put("/customers/{customer_id}")
-def update_customer(customer_id: uuid.UUID, payload: CustomerUpdate, db: Session = Depends(get_db), _: User = Depends(require_permission("customers.manage"))):
+def update_customer(customer_id: uuid.UUID, payload: CustomerUpdate, request: Request, db: Session = Depends(get_db), current: User = Depends(require_permission("customers.manage"))):
     c=db.get(Customer,customer_id)
     if not c: raise HTTPException(404,"Cliente no encontrado")
+    old=customer_dict(c)
     for k,v in payload.model_dump().items(): setattr(c,k,v)
-    try: db.commit()
+    try:
+        audit(db,current,"CUSTOMER_UPDATE","customer",c.id,{"old":old,"new":customer_dict(c)},request)
+        db.commit()
     except IntegrityError:
         db.rollback(); raise HTTPException(409,"La identificación ya pertenece a otro cliente")
     db.refresh(c); return customer_dict(c)
@@ -100,13 +107,16 @@ def properties(stage_id: uuid.UUID | None=None, status_code:str|None=None, db:Se
         "total_price":float(x.total_price),"location_reference":x.location_reference,"notes":x.notes,"active":x.active} for x in rows]
 
 @router.post("/properties")
-def create_property(payload:PropertyCreate,db:Session=Depends(get_db),_:User=Depends(require_permission("properties.manage"))):
+def create_property(payload:PropertyCreate,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("properties.manage"))):
     block=db.get(Block,uuid.UUID(payload.block_id))
     if not block: raise HTTPException(404,"Manzana no encontrada")
     status_obj=db.scalar(select(PropertyStatus).where(PropertyStatus.code==payload.status_code))
     if not status_obj: raise HTTPException(400,"Estado de predio inválido")
     data=payload.model_dump(exclude={"status_code","block_id"})
     p=Property(block_id=block.id,status_id=status_obj.id,**data); db.add(p)
-    try: db.commit()
+    try:
+        db.flush()
+        audit(db,current,"PROPERTY_CREATE","property",p.id,{"code":p.code,"block_id":p.block_id,"lot_number":p.lot_number,"total_price":p.total_price,"status":status_obj.code},request)
+        db.commit()
     except IntegrityError: db.rollback(); raise HTTPException(409,"Código o número de lote duplicado")
     db.refresh(p); return {"id":str(p.id),"code":p.code}
