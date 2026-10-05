@@ -10,6 +10,7 @@ import PropertiesPage from './pages/PropertiesPage'
 import SalesPage from './pages/SalesPage'
 import PaymentsPage from './pages/PaymentsPage'
 import ReceivablesPage from './pages/ReceivablesPage'
+import ReportsPage from './pages/ReportsPage'
 import type { SessionUser } from './types'
 
 export default function App(){
@@ -28,6 +29,7 @@ export default function App(){
     if(active==='Reservas y ventas')return <SalesPage/>
     if(active==='Pagos')return <PaymentsPage/>
     if(active==='Cartera')return <ReceivablesPage/>
+    if(active==='Reportes')return <ReportsPage/>
     return <section className="rounded-2xl border bg-white p-8 shadow-sm"><p className="text-sm font-semibold text-[#52AD56]">Módulo</p><h2 className="mt-1 text-2xl font-semibold text-slate-900">{active}</h2><p className="mt-3 text-slate-500">Este módulo se implementará en el siguiente bloque funcional.</p></section>
   }
   if(loading)return <div className="flex min-h-screen items-center justify-center text-[#3A6C32]">Cargando SGV EPMVS…</div>
