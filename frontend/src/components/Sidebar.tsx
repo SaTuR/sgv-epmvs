@@ -8,7 +8,7 @@ const items = [
   ['Reservas y ventas', Home, 'sales.manage'],
   ['Pagos', WalletCards, 'payments.manage'],
   ['Cartera', Landmark, 'receivables.view'],
-  ['Certificados', FileCheck2, 'payments.manage'],
+  ['Certificados', FileCheck2, 'documents.view'],
   ['Reportes', BarChart3, 'reports.view'],
   ['Usuarios y permisos', ShieldCheck, 'users.manage'],
   ['Configuración', Settings, 'system.admin'],
