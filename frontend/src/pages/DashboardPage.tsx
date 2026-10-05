@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Building2, CircleDollarSign, Landmark, MapPinned, TrendingUp, WalletCards } from 'lucide-react'
 import { apiFetch } from '../api'
+import { propertyStatusBarClass } from '../utils/statusStyles'
 
 const money=(v:number)=>'$ '+v.toLocaleString('es-EC',{minimumFractionDigits:2,maximumFractionDigits:2})
 
@@ -43,7 +44,7 @@ export default function DashboardPage(){
 
     <div className="mt-6 grid gap-5 xl:grid-cols-2">
       <section className="rounded-2xl border bg-white p-6 shadow-sm"><div className="flex items-center justify-between"><div><h3 className="font-semibold text-slate-900">Predios por estado</h3><p className="mt-1 text-sm text-slate-500">Distribución actual del inventario.</p></div><span className="text-xs text-slate-400">Total {t.properties}</span></div>
-        <div className="mt-6 space-y-4">{data.properties_by_status.map((x:any)=><div key={x.status}><div className="mb-1 flex justify-between text-sm"><span>{x.status}</span><span className="font-semibold">{x.count}</span></div><div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-[#52AD56]" style={{width:(x.count/maxStatus*100)+'%'}}/></div></div>)}{!data.properties_by_status.length&&<p className="py-10 text-center text-sm text-slate-400">Aún no hay predios registrados.</p>}</div>
+        <div className="mt-6 space-y-4">{data.properties_by_status.map((x:any)=><div key={x.status}><div className="mb-1 flex justify-between text-sm"><span>{x.status}</span><span className="font-semibold">{x.count}</span></div><div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className={'h-full rounded-full '+propertyStatusBarClass(x.status)} style={{width:(x.count/maxStatus*100)+'%'}}/></div></div>)}{!data.properties_by_status.length&&<p className="py-10 text-center text-sm text-slate-400">Aún no hay predios registrados.</p>}</div>
       </section>
 
       <section className="rounded-2xl border bg-white p-6 shadow-sm"><div><h3 className="font-semibold text-slate-900">Recaudación mensual</h3><p className="mt-1 text-sm text-slate-500">Últimos meses con movimientos registrados.</p></div>
