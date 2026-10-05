@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
-from app.api.deps import get_current_user, get_db, require_permission
+from app.api.deps import get_current_user, get_db, require_any_permission, require_permission
 from app.config import settings
 from app.models import Block, Customer, Installment, IssuedDocument, Payment, Project, ProjectStage, Property, Sale, User
 from app.services.pdf_documents import account_statement, payment_receipt, payments_certificate
@@ -44,7 +44,7 @@ def sale_context(db:Session,sale:Sale,document:IssuedDocument,user:User):
     }
 
 @router.get("/payments/{payment_id}/receipt.pdf")
-def payment_pdf(payment_id:uuid.UUID,db:Session=Depends(get_db),user:User=Depends(get_current_user)):
+def payment_pdf(payment_id:uuid.UUID,db:Session=Depends(get_db),user:User=Depends(require_any_permission("payments.manage","documents.view"))):
     payment=db.get(Payment,payment_id)
     if not payment or payment.status!="POSTED": raise HTTPException(404,"Pago no encontrado")
     sale=db.get(Sale,payment.sale_id)
@@ -59,7 +59,7 @@ def payment_pdf(payment_id:uuid.UUID,db:Session=Depends(get_db),user:User=Depend
     return Response(pdf,media_type="application/pdf",headers={"Content-Disposition":f'attachment; filename="{document.document_number}.pdf"'})
 
 @router.get("/sales/{sale_id}/statement.pdf")
-def statement_pdf(sale_id:uuid.UUID,db:Session=Depends(get_db),user:User=Depends(get_current_user)):
+def statement_pdf(sale_id:uuid.UUID,db:Session=Depends(get_db),user:User=Depends(require_any_permission("sales.manage","documents.view"))):
     sale=db.get(Sale,sale_id)
     if not sale or not sale.active: raise HTTPException(404,"Compra no encontrada")
     document=get_or_issue(db,"ACCOUNT_STATEMENT",user,sale_id=sale.id)
@@ -67,7 +67,7 @@ def statement_pdf(sale_id:uuid.UUID,db:Session=Depends(get_db),user:User=Depends
     return Response(pdf,media_type="application/pdf",headers={"Content-Disposition":f'attachment; filename="{document.document_number}.pdf"'})
 
 @router.get("/sales/{sale_id}/payments-certificate.pdf")
-def certificate_pdf(sale_id:uuid.UUID,db:Session=Depends(get_db),user:User=Depends(get_current_user)):
+def certificate_pdf(sale_id:uuid.UUID,db:Session=Depends(get_db),user:User=Depends(require_any_permission("sales.manage","documents.view"))):
     sale=db.get(Sale,sale_id)
     if not sale or not sale.active: raise HTTPException(404,"Compra no encontrada")
     document=get_or_issue(db,"PAYMENTS_CERTIFICATE",user,sale_id=sale.id)
