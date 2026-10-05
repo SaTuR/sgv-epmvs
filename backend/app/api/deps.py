@@ -31,3 +31,11 @@ def get_current_user(
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no disponible")
     return user
+
+def require_permission(code: str):
+    def checker(user: User = Depends(get_current_user)):
+        granted = {p.code for role in user.roles for p in role.permissions}
+        if "system.admin" not in granted and code not in granted:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No tiene permiso para esta acción")
+        return user
+    return checker
