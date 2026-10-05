@@ -28,7 +28,7 @@ export default function App(){
     if(active==='Clientes')return <CustomersPage/>
     if(active==='Proyecto San Joaquín')return <ProjectPage/>
     if(active==='Predios')return <PropertiesPage/>
-    if(active==='Reservas y ventas')return <SalesPage/>
+    if(active==='Reservas y ventas')return <SalesPage permissions={user?.permissions||[]}/>
     if(active==='Pagos')return <PaymentsPage/>
     if(active==='Cartera')return <ReceivablesPage/>
     if(active==='Reportes')return <ReportsPage/>
