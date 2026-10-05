@@ -89,13 +89,14 @@ def create_sale(payload:SaleCreate,request:Request,db:Session=Depends(get_db),cu
     sale=Sale(customer_id=customer.id,property_id=prop.id,reservation_id=reservation.id if reservation else None,
       confirmation_date=payload.confirmation_date or date.today(),sale_price=money(payload.sale_price),down_payment=money(payload.down_payment),
       financed_amount=financed,installment_count=payload.installment_count,frequency=payload.frequency,first_due_date=payload.first_due_date,notes=payload.notes)
-    base=money(financed/Decimal(payload.installment_count))
-    total=Decimal("0")
-    for n in range(1,payload.installment_count+1):
-        amount=base if n<payload.installment_count else money(financed-total)
-        due=payload.first_due_date+relativedelta(months=n-1)
-        sale.installments.append(Installment(number=n,due_date=due,amount=amount,paid_amount=0,status="PENDING"))
-        total+=amount
+    if financed>0:
+        base=money(financed/Decimal(payload.installment_count))
+        total=Decimal("0")
+        for n in range(1,payload.installment_count+1):
+            amount=base if n<payload.installment_count else money(financed-total)
+            due=payload.first_due_date+relativedelta(months=n-1)
+            sale.installments.append(Installment(number=n,due_date=due,amount=amount,paid_amount=0,status="PENDING"))
+            total+=amount
     prop.status_id=prop_status(db,"PAYING" if financed>0 else "PAID").id
     if reservation: reservation.active=False
     db.add(sale); db.flush()
