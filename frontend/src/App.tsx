@@ -14,6 +14,7 @@ import ReportsPage from './pages/ReportsPage'
 import SecurityPage from './pages/SecurityPage'
 import AuditPage from './pages/AuditPage'
 import CertificatesPage from './pages/CertificatesPage'
+import SettingsPage from './pages/SettingsPage'
 import type { SessionUser } from './types'
 
 export default function App(){
@@ -35,6 +36,7 @@ export default function App(){
     if(active==='Certificados')return <CertificatesPage/>
     if(active==='Reportes')return <ReportsPage/>
     if(active==='Usuarios y permisos')return <SecurityPage/>
+    if(active==='Configuración')return <SettingsPage/>
     if(active==='Auditoría')return <AuditPage/>
     return <section className="rounded-2xl border bg-white p-8 shadow-sm"><p className="text-sm font-semibold text-[#52AD56]">Módulo</p><h2 className="mt-1 text-2xl font-semibold text-slate-900">{active}</h2><p className="mt-3 text-slate-500">Este módulo se implementará en el siguiente bloque funcional.</p></section>
   }
