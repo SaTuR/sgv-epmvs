@@ -15,7 +15,7 @@ class CustomerCreate(BaseModel):
     address: str = Field(min_length=1)
     canton: str | None = None
     province: str | None = None
-    notes: str = Field(min_length=1)
+    notes: str | None = None
 
 class CustomerUpdate(CustomerCreate):
     active: bool = True
@@ -34,4 +34,4 @@ class PropertyCreate(BaseModel):
     price_per_m2: Decimal = Field(gt=0)
     total_price: Decimal = Field(ge=0)
     location_reference: str = Field(min_length=1)
-    notes: str | None = None
+    notes: str = Field(min_length=1)
