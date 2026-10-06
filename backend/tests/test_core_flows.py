@@ -180,10 +180,12 @@ def test_property_total_is_recalculated_server_side(client,admin_headers):
         "status_code":"AVAILABLE",
         "code":"QA-CALC-"+uuid.uuid4().hex[:8],
         "lot_number":uuid.uuid4().hex[:6],
-        "cadastral_key":None,
+        "cadastral_key":"CAT-QA-"+uuid.uuid4().hex[:6],
         "area_m2":123.45,
         "price_per_m2":87.65,
         "total_price":1,
+        "location_reference":"Referencia QA",
+        "notes":"Prueba de cálculo automático",
     }
     r=client.post("/api/properties",json=payload,headers=admin_headers)
     assert r.status_code==200, r.text
@@ -194,3 +196,37 @@ def test_property_total_is_recalculated_server_side(client,admin_headers):
         assert float(prop.total_price)==round(123.45*87.65,2)
     finally:
         db.close()
+
+
+def test_customer_required_fields_are_enforced(client,admin_headers):
+    r=client.post("/api/customers",json={
+        "identification_type":"CEDULA",
+        "identification":"0999999999",
+        "first_name":"QA",
+        "last_name":"Sin Datos"
+    },headers=admin_headers)
+    assert r.status_code==422
+
+
+def test_property_required_fields_are_enforced(client,admin_headers):
+    db=SessionLocal()
+    try:
+        from app.models import Project, ProjectStage, Block
+        project=db.scalar(select(Project).where(Project.name=="San Joaquín"))
+        stage=db.scalar(select(ProjectStage).where(ProjectStage.project_id==project.id).order_by(ProjectStage.name))
+        block=Block(stage_id=stage.id,name="QA-REQ-"+uuid.uuid4().hex[:8])
+        db.add(block);db.commit();db.refresh(block)
+        block_id=str(block.id)
+    finally:
+        db.close()
+
+    r=client.post("/api/properties",json={
+        "block_id":block_id,
+        "status_code":"AVAILABLE",
+        "code":"QA-REQ-"+uuid.uuid4().hex[:8],
+        "lot_number":"001",
+        "area_m2":100,
+        "price_per_m2":100,
+        "total_price":10000
+    },headers=admin_headers)
+    assert r.status_code==422
