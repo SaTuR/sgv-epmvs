@@ -160,3 +160,37 @@ def test_document_direct_download_requires_permission(client,admin_headers):
 def test_public_verification_unknown_code_returns_404(client):
     r=client.get("/api/public/documents/"+str(uuid.uuid4()))
     assert r.status_code==404
+
+
+def test_property_total_is_recalculated_server_side(client,admin_headers):
+    db=SessionLocal()
+    try:
+        from app.models import Project, ProjectStage, Block
+        project=db.scalar(select(Project).where(Project.name=="San Joaquín"))
+        stage=db.scalar(select(ProjectStage).where(ProjectStage.project_id==project.id).order_by(ProjectStage.name))
+        suffix=uuid.uuid4().hex[:8]
+        block=Block(stage_id=stage.id,name="QA-CALC-"+suffix)
+        db.add(block);db.commit();db.refresh(block)
+        block_id=str(block.id)
+    finally:
+        db.close()
+
+    payload={
+        "block_id":block_id,
+        "status_code":"AVAILABLE",
+        "code":"QA-CALC-"+uuid.uuid4().hex[:8],
+        "lot_number":uuid.uuid4().hex[:6],
+        "cadastral_key":None,
+        "area_m2":123.45,
+        "price_per_m2":87.65,
+        "total_price":1,
+    }
+    r=client.post("/api/properties",json=payload,headers=admin_headers)
+    assert r.status_code==200, r.text
+
+    db=SessionLocal()
+    try:
+        prop=db.get(Property,uuid.UUID(r.json()["id"]))
+        assert float(prop.total_price)==round(123.45*87.65,2)
+    finally:
+        db.close()
