@@ -7,7 +7,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_any_permission, require_permission
 from app.config import settings
-from app.models import Block, Customer, Installment, IssuedDocument, Payment, Project, ProjectStage, Property, Sale, User
+from app.models import Block, Customer, Installment, IssuedDocument, Payment, Project, ProjectStage, Property, Sale, SystemSetting, User
 from app.services.pdf_documents import account_statement, payment_receipt, payments_certificate
 
 router=APIRouter(prefix="/api",tags=["Documentos"])
@@ -35,12 +35,16 @@ def sale_context(db:Session,sale:Sale,document:IssuedDocument,user:User):
         if i.status=="PARTIAL": return "Parcial"
         if i.due_date<date.today(): return "Vencida"
         return "Pendiente"
+    system_setting=db.scalar(select(SystemSetting).limit(1))
+    public_base_url=system_setting.public_base_url if system_setting else settings.public_base_url
+    document_footer=system_setting.document_footer if system_setting else "Sistema de Gestión y Venta EPMVS"
     return {
         "document":document,"sale":sale,"customer":customer,"property":prop,"block_name":block.name,
         "stage_name":stage.name,"project_name":project.name,"installments":installments,"payments":payments,
         "current_balance":current_balance,"total_paid":sale.down_payment+sum((p.amount for p in payments),Decimal("0")),
         "status_label":status_label,"user_name":user.full_name,
-        "verification_url":f"{settings.public_base_url}/{document.verification_code}",
+        "verification_url":f"{public_base_url.rstrip('/')}/{document.verification_code}",
+        "document_footer":document_footer,
     }
 
 @router.get("/payments/{payment_id}/receipt.pdf")
