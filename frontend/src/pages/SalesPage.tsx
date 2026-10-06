@@ -15,7 +15,8 @@ export default function SalesPage({permissions}:{permissions:string[]}){
   const [open,setOpen]=useState<'reservation'|'sale'|'installments'|null>(null)
   const [installments,setInstallments]=useState<any[]>([])
   const [selectedSale,setSelectedSale]=useState<any>(null)
-  const [runtimeSettings,setRuntimeSettings]=useState<any>({reservation_default_days:3,currency_symbol:'
+  const [runtimeSettings,setRuntimeSettings]=useState<any>({reservation_default_days:3,currency_symbol:'$'})
+  const [resForm,setResForm]=useState<any>({customer_id:'',property_id:'',reservation_date:today(),expires_on:'',notes:''})
   const [saleForm,setSaleForm]=useState<any>({customer_id:'',property_id:'',reservation_id:'',sale_price:'',down_payment:'0',installment_count:'12',frequency:'MONTHLY',first_due_date:today(),notes:''})
 
   async function load(){
