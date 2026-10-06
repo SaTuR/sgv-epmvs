@@ -36,7 +36,7 @@ def qr_image(text:str):
     buf=BytesIO(); img.save(buf,format="PNG"); buf.seek(0)
     return Image(buf,width=27*mm,height=27*mm)
 
-def header_footer(canvas,doc,document_number:str):
+def header_footer(canvas,doc,document_number:str,footer_text:str):
     canvas.saveState()
     w,h=A4
     canvas.setStrokeColor(GREEN)
@@ -44,7 +44,7 @@ def header_footer(canvas,doc,document_number:str):
     canvas.line(18*mm,h-18*mm,w-18*mm,h-18*mm)
     canvas.setFont("Helvetica",7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawString(18*mm,12*mm,"Sistema de Gestión y Venta EPMVS")
+    canvas.drawString(18*mm,12*mm,footer_text)
     canvas.drawRightString(w-18*mm,12*mm,f"{document_number} · Página {doc.page}")
     canvas.restoreState()
 
@@ -97,10 +97,10 @@ def final_block(story,verification_url,verification_code,user_name):
     sig.setStyle(TableStyle([("ALIGN",(0,0),(-1,-1),"CENTER"),("TOPPADDING",(0,0),(-1,-1),4)]))
     story.append(sig)
 
-def build_pdf(story,number):
+def build_pdf(story,number,footer_text="Sistema de Gestión y Venta EPMVS"):
     buf=BytesIO()
     doc=SimpleDocTemplate(buf,pagesize=A4,rightMargin=20*mm,leftMargin=20*mm,topMargin=24*mm,bottomMargin=20*mm)
-    doc.build(story,onFirstPage=lambda c,d:header_footer(c,d,number),onLaterPages=lambda c,d:header_footer(c,d,number))
+    doc.build(story,onFirstPage=lambda c,d:header_footer(c,d,number,footer_text),onLaterPages=lambda c,d:header_footer(c,d,number,footer_text))
     buf.seek(0)
     return buf.getvalue()
 
@@ -125,7 +125,7 @@ def payment_receipt(ctx):
     if p.notes:
         story += [Spacer(1,3*mm),Paragraph(f"<b>Observaciones:</b> {p.notes}",VALUE)]
     final_block(story,ctx["verification_url"],d.verification_code,ctx["user_name"])
-    return build_pdf(story,d.document_number)
+    return build_pdf(story,d.document_number,ctx.get("document_footer","Sistema de Gestión y Venta EPMVS"))
 
 def account_statement(ctx):
     d=ctx["document"]; s=ctx["sale"]; c=ctx["customer"]; prop=ctx["property"]
