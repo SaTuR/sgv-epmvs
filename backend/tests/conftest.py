@@ -96,6 +96,8 @@ def create_customer_and_property():
             identification="QA-CI-"+suffix,
             first_name="Cliente",
             last_name="QA "+suffix,
+            mobile="0999999999",
+            address="Dirección QA",
             email=f"qa-{suffix}@example.com",
         )
         available=db.scalar(select(PropertyStatus).where(PropertyStatus.code=="AVAILABLE"))
@@ -104,9 +106,12 @@ def create_customer_and_property():
             status_id=available.id,
             code="QA-PROP-"+suffix,
             lot_number=suffix,
+            cadastral_key="CAT-"+suffix,
             area_m2=100,
             price_per_m2=100,
             total_price=10000,
+            location_reference="Referencia QA",
+            notes="Predio de prueba QA",
         )
         db.add_all([block,customer,prop]);db.commit()
         return str(customer.id),str(prop.id)
