@@ -1,18 +1,35 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { Building2, FileText, Save, Settings2, SlidersHorizontal } from 'lucide-react'
+import { Building2, Cloud, DatabaseBackup, FileText, Play, RefreshCw, Save, Settings2, SlidersHorizontal, Upload } from 'lucide-react'
 import { apiFetch } from '../api'
 
 const required=(label:string)=><>{label}<span className="ml-1 text-red-600">*</span></>
 
+const providerRemote=(provider:string)=>{
+  if(provider==='ONEDRIVE') return 'onedrive'
+  if(provider==='DROPBOX') return 'dropbox'
+  return 'gdrive'
+}
+
 export default function SettingsPage(){
   const [form,setForm]=useState<any>(null)
   const [saving,setSaving]=useState(false)
+  const [backupAction,setBackupAction]=useState('')
   const [message,setMessage]=useState('')
   const [error,setError]=useState('')
 
+  async function refresh(){
+    setForm(await apiFetch('/settings'))
+  }
+
   useEffect(()=>{
-    apiFetch('/settings').then(setForm).catch((e:any)=>setError(e.message||'No fue posible cargar la configuración'))
+    refresh().catch((e:any)=>setError(e.message||'No fue posible cargar la configuración'))
   },[])
+
+  useEffect(()=>{
+    if(!form || !['QUEUED','RUNNING'].includes(form.backup_last_status)) return
+    const timer=setInterval(()=>refresh().catch(()=>{}),3000)
+    return ()=>clearInterval(timer)
+  },[form?.backup_last_status])
 
   async function save(e:FormEvent){
     e.preventDefault();setSaving(true);setMessage('');setError('')
@@ -23,6 +40,52 @@ export default function SettingsPage(){
     finally{setSaving(false)}
   }
 
+  async function saveBackup(){
+    setBackupAction('save');setMessage('');setError('')
+    try{
+      const data=await apiFetch('/settings/backup',{method:'PUT',body:JSON.stringify({
+        backup_enabled:Boolean(form.backup_enabled),
+        backup_provider:form.backup_provider,
+        backup_remote_name:form.backup_remote_name,
+        backup_folder:form.backup_folder,
+        backup_time:form.backup_time,
+        backup_keep_last:2,
+      })})
+      setForm(data);setMessage('Configuración de respaldos guardada.')
+    }catch(e:any){setError(e.message||'No fue posible guardar los respaldos')}
+    finally{setBackupAction('')}
+  }
+
+  async function uploadConfig(file:File){
+    setBackupAction('upload');setMessage('');setError('')
+    try{
+      const body=new FormData();body.append('file',file)
+      await apiFetch('/settings/backup/rclone-config',{method:'POST',body})
+      await refresh();setMessage('rclone.conf cargado de forma segura.')
+    }catch(e:any){setError(e.message||'No fue posible cargar rclone.conf')}
+    finally{setBackupAction('')}
+  }
+
+  async function testConnection(){
+    setBackupAction('test');setMessage('');setError('')
+    try{
+      await saveBackup()
+      const data=await apiFetch('/settings/backup/test',{method:'POST'})
+      setMessage(data.message)
+    }catch(e:any){setError(e.message||'No fue posible conectar con la nube')}
+    finally{setBackupAction('')}
+  }
+
+  async function runBackup(){
+    setBackupAction('run');setMessage('');setError('')
+    try{
+      await saveBackup()
+      const data=await apiFetch('/settings/backup/run',{method:'POST'})
+      await refresh();setMessage(data.message)
+    }catch(e:any){setError(e.message||'No fue posible iniciar el respaldo')}
+    finally{setBackupAction('')}
+  }
+
   if(!form)return <div>{error?<p className="rounded-xl bg-red-50 p-4 text-red-700">{error}</p>:<p>Cargando configuración…</p>}</div>
 
   const input=(key:string,label:string,type='text',requiredField=true)=>(
@@ -31,6 +94,22 @@ export default function SettingsPage(){
       <input required={requiredField} type={type} value={form[key]??''} onChange={e=>setForm({...form,[key]:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/>
     </label>
   )
+
+  const statusClass=form.backup_last_status==='SUCCESS'
+    ?'border-emerald-200 bg-emerald-50 text-emerald-700'
+    :form.backup_last_status==='ERROR'
+      ?'border-red-200 bg-red-50 text-red-700'
+      :['QUEUED','RUNNING'].includes(form.backup_last_status)
+        ?'border-amber-200 bg-amber-50 text-amber-700'
+        :'border-slate-200 bg-slate-50 text-slate-600'
+
+  const statusLabel:any={
+    NEVER:'Sin ejecutar',
+    QUEUED:'En cola',
+    RUNNING:'Ejecutando',
+    SUCCESS:'Correcto',
+    ERROR:'Error',
+  }
 
   return <form onSubmit={save}>
     <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -71,6 +150,54 @@ export default function SettingsPage(){
           {input('public_base_url','URL pública de validación')}
           <label><span className="text-sm font-medium text-slate-700">{required('Texto del pie de documentos')}</span><input required value={form.document_footer??''} onChange={e=>setForm({...form,document_footer:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
           <p className="text-xs text-slate-500">La URL pública se usa para construir el QR de los comprobantes, estados de cuenta y certificados.</p>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border bg-white p-6 shadow-sm xl:col-span-2">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div><div className="flex items-center gap-2"><DatabaseBackup className="h-5 w-5 text-[#3A6C32]"/><h3 className="font-semibold">Respaldos automáticos</h3></div><p className="mt-1 text-sm text-slate-500">PostgreSQL → nube. El sistema conserva únicamente los 2 respaldos más recientes.</p></div>
+          <span className={'inline-flex rounded-full border px-3 py-1 text-xs font-semibold '+statusClass}>{statusLabel[form.backup_last_status]||form.backup_last_status}</span>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <label className="flex items-center gap-3 rounded-xl border p-4 text-sm font-medium">
+            <input type="checkbox" checked={Boolean(form.backup_enabled)} onChange={e=>setForm({...form,backup_enabled:e.target.checked})}/>
+            Activar respaldo diario
+          </label>
+
+          <label><span className="text-sm font-medium text-slate-700">{required('Proveedor')}</span><select value={form.backup_provider||'GDRIVE'} onChange={e=>setForm({...form,backup_provider:e.target.value,backup_remote_name:providerRemote(e.target.value)})} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option value="GDRIVE">Google Drive</option><option value="ONEDRIVE">Microsoft OneDrive</option><option value="DROPBOX">Dropbox</option></select></label>
+
+          <label><span className="text-sm font-medium text-slate-700">{required('Hora diaria')}</span><input required type="time" value={form.backup_time||'02:00'} onChange={e=>setForm({...form,backup_time:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+
+          <label><span className="text-sm font-medium text-slate-700">{required('Nombre del remoto rclone')}</span><input required value={form.backup_remote_name||''} onChange={e=>setForm({...form,backup_remote_name:e.target.value})} placeholder="gdrive" className="mt-1 w-full rounded-xl border px-3 py-2.5"/><span className="mt-1 block text-xs text-slate-500">Debe coincidir con [nombre] dentro de rclone.conf.</span></label>
+
+          <label className="md:col-span-1 xl:col-span-2"><span className="text-sm font-medium text-slate-700">{required('Carpeta en la nube')}</span><input required value={form.backup_folder||'SGV-EPMVS/backups'} onChange={e=>setForm({...form,backup_folder:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border bg-slate-50 p-4">
+            <div className="flex items-center gap-2"><Cloud className="h-5 w-5 text-[#3A6C32]"/><p className="font-medium">Conexión con la nube</p></div>
+            <p className="mt-2 text-sm text-slate-600">{form.backup_configured?'rclone.conf está instalado en el servidor.':'Falta cargar rclone.conf con la autorización del proveedor.'}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"><Upload className="h-4 w-4"/>Subir rclone.conf<input type="file" accept=".conf,text/plain" className="hidden" onChange={e=>e.target.files?.[0]&&uploadConfig(e.target.files[0])}/></label>
+              <button type="button" disabled={!!backupAction||!form.backup_configured} onClick={testConnection} className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50"><RefreshCw className="h-4 w-4"/>Probar conexión</button>
+            </div>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <p className="font-medium">Último respaldo</p>
+            <div className="mt-3 space-y-1 text-sm text-slate-600">
+              <p><b>Fecha:</b> {form.backup_last_run?new Date(form.backup_last_run).toLocaleString('es-EC'):'Nunca'}</p>
+              <p><b>Archivo:</b> {form.backup_last_filename||'-'}</p>
+              <p><b>Retención:</b> 2 últimos respaldos</p>
+              {form.backup_last_error&&<p className="mt-2 rounded-lg bg-red-50 p-2 text-red-700"><b>Error:</b> {form.backup_last_error}</p>}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button type="button" disabled={!!backupAction} onClick={saveBackup} className="rounded-xl border px-4 py-2.5 text-sm font-semibold">Guardar respaldo</button>
+          <button type="button" disabled={!!backupAction||!form.backup_configured||['QUEUED','RUNNING'].includes(form.backup_last_status)} onClick={runBackup} className="inline-flex items-center gap-2 rounded-xl bg-[#3A6C32] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Play className="h-4 w-4"/>Respaldar ahora</button>
         </div>
       </section>
     </div>
