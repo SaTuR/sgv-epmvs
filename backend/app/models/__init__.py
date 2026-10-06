@@ -4,9 +4,10 @@ from app.models.business import Customer, StageMap, Block, PropertyStatus, Prope
 from app.models.finance import Reservation, Sale, Installment, Payment, PaymentAllocation, PropertyMapZone
 from app.models.documents import IssuedDocument
 from app.models.audit import AuditLog
+from app.models.settings import SystemSetting
 
 __all__ = [
     "User","Role","Permission","user_roles","role_permissions","Project","ProjectStage",
     "Customer","StageMap","Block","PropertyStatus","Property","Reservation","Sale",
-    "Installment","Payment","PaymentAllocation","PropertyMapZone","IssuedDocument","AuditLog",
+    "Installment","Payment","PaymentAllocation","PropertyMapZone","IssuedDocument","AuditLog","SystemSetting",
 ]
