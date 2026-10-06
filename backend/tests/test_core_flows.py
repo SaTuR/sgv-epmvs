@@ -230,3 +230,44 @@ def test_property_required_fields_are_enforced(client,admin_headers):
         "total_price":10000
     },headers=admin_headers)
     assert r.status_code==422
+
+
+def test_settings_requires_system_admin(client):
+    email="qa-settings-"+uuid.uuid4().hex[:6]+"@example.com"
+    password="QaPass123!"
+    create_user_with_permissions(email,password,["sales.manage"])
+    headers=login_headers(client,email,password)
+    r=client.get("/api/settings",headers=headers)
+    assert r.status_code==403
+
+
+def test_admin_can_read_and_update_settings(client,admin_headers):
+    current=client.get("/api/settings",headers=admin_headers)
+    assert current.status_code==200, current.text
+    original=current.json()
+
+    payload={
+        "institution_name":original["institution_name"],
+        "tax_id":original.get("tax_id"),
+        "address":original.get("address"),
+        "phone":original.get("phone"),
+        "email":original.get("email"),
+        "city":original["city"],
+        "province":original["province"],
+        "reservation_default_days":7,
+        "currency_symbol":"$",
+        "public_base_url":original["public_base_url"],
+        "document_footer":original["document_footer"],
+        "timezone":original["timezone"],
+    }
+    saved=client.put("/api/settings",json=payload,headers=admin_headers)
+    assert saved.status_code==200, saved.text
+    assert saved.json()["reservation_default_days"]==7
+
+    runtime=client.get("/api/settings/runtime",headers=admin_headers)
+    assert runtime.status_code==200, runtime.text
+    assert runtime.json()["reservation_default_days"]==7
+
+    restore={k:original.get(k) for k in payload.keys()}
+    restored=client.put("/api/settings",json=restore,headers=admin_headers)
+    assert restored.status_code==200, restored.text
