@@ -10,12 +10,12 @@ class CustomerCreate(BaseModel):
     birth_date: date | None = None
     marital_status: str | None = None
     phone: str | None = None
-    mobile: str | None = None
+    mobile: str = Field(min_length=1, max_length=30)
     email: EmailStr | None = None
-    address: str | None = None
+    address: str = Field(min_length=1)
     canton: str | None = None
     province: str | None = None
-    notes: str | None = None
+    notes: str = Field(min_length=1)
 
 class CustomerUpdate(CustomerCreate):
     active: bool = True
@@ -29,9 +29,9 @@ class PropertyCreate(BaseModel):
     status_code: str = "AVAILABLE"
     code: str = Field(min_length=1, max_length=80)
     lot_number: str = Field(min_length=1, max_length=40)
-    cadastral_key: str | None = None
+    cadastral_key: str = Field(min_length=1, max_length=100)
     area_m2: Decimal = Field(gt=0)
-    price_per_m2: Decimal | None = Field(default=None, ge=0)
+    price_per_m2: Decimal = Field(gt=0)
     total_price: Decimal = Field(ge=0)
-    location_reference: str | None = None
+    location_reference: str = Field(min_length=1)
     notes: str | None = None
