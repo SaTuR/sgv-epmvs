@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy import func, select
@@ -113,6 +114,8 @@ def create_property(payload:PropertyCreate,request:Request,db:Session=Depends(ge
     status_obj=db.scalar(select(PropertyStatus).where(PropertyStatus.code==payload.status_code))
     if not status_obj: raise HTTPException(400,"Estado de predio inválido")
     data=payload.model_dump(exclude={"status_code","block_id"})
+    if payload.price_per_m2 is not None:
+        data["total_price"]=(payload.area_m2*payload.price_per_m2).quantize(Decimal("0.01"))
     p=Property(block_id=block.id,status_id=status_obj.id,**data); db.add(p)
     try:
         db.flush()
