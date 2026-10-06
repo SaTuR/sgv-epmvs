@@ -271,3 +271,30 @@ def test_admin_can_read_and_update_settings(client,admin_headers):
     restore={k:original.get(k) for k in payload.keys()}
     restored=client.put("/api/settings",json=restore,headers=admin_headers)
     assert restored.status_code==200, restored.text
+
+
+def test_backup_settings_are_admin_only_and_keep_two(client,admin_headers):
+    email="qa-backup-"+uuid.uuid4().hex[:6]+"@example.com"
+    password="QaPass123!"
+    create_user_with_permissions(email,password,["sales.manage"])
+    headers=login_headers(client,email,password)
+
+    payload={
+        "backup_enabled":True,
+        "backup_provider":"GDRIVE",
+        "backup_remote_name":"gdrive",
+        "backup_folder":"SGV-EPMVS/backups",
+        "backup_time":"02:30",
+        "backup_keep_last":10,
+    }
+
+    denied=client.put("/api/settings/backup",json=payload,headers=headers)
+    assert denied.status_code==403
+
+    saved=client.put("/api/settings/backup",json=payload,headers=admin_headers)
+    assert saved.status_code==200, saved.text
+    assert saved.json()["backup_keep_last"]==2
+    assert saved.json()["backup_time"]=="02:30"
+
+    payload["backup_enabled"]=False
+    client.put("/api/settings/backup",json=payload,headers=admin_headers)
