@@ -20,8 +20,10 @@ def upgrade():
     op.add_column("system_settings",sa.Column("sri_certificate_serial",sa.String(length=160),nullable=True))
     op.add_column("system_settings",sa.Column("sri_certificate_valid_from",sa.DateTime(timezone=True),nullable=True))
     op.add_column("system_settings",sa.Column("sri_certificate_valid_to",sa.DateTime(timezone=True),nullable=True))
+    op.add_column("electronic_invoices",sa.Column("signed_xml_path",sa.String(length=500),nullable=True))
 
 def downgrade():
+    op.drop_column("electronic_invoices","signed_xml_path")
     for name in [
         "sri_certificate_valid_to","sri_certificate_valid_from","sri_certificate_serial",
         "sri_certificate_issuer","sri_certificate_subject",
