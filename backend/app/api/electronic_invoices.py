@@ -5,14 +5,14 @@ from sqlalchemy.orm import Session
 from fastapi.responses import FileResponse
 
 from app.api.deps import get_db, require_permission
-from app.models import Customer, ElectronicInvoice, Property, Sale, User
+from app.models import Customer, ElectronicInvoice, Installment, Property, Sale, User
 from app.services.audit import audit
-from app.services.electronic_invoice import prepare_invoice_xml
+from app.services.electronic_invoice import ensure_invoice_for_paid_sale, prepare_invoice_xml
 from app.services.sri_signing import sign_invoice_xml
 from app.services.sri_client import request_authorization, save_authorization_xml, send_receipt
 from app.services.ride import generate_ride
 from app.services.invoice_email import send_invoice_email
-from app.models import SystemSetting
+from app.models import PropertyStatus, SystemSetting
 
 router=APIRouter(prefix="/api/electronic-invoices",tags=["Facturación electrónica"])
 
@@ -26,6 +26,43 @@ STATUS_LABELS={
     "REJECTED":"Rechazada",
     "ERROR":"Error",
 }
+
+@router.post("/sales/{sale_id}/create")
+def create_invoice_for_paid_sale(sale_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("invoices.create"))):
+    sale=db.get(Sale,sale_id)
+    if not sale or not sale.active:
+        raise HTTPException(404,"Venta no encontrada")
+
+    prop=db.get(Property,sale.property_id)
+    if not prop:
+        raise HTTPException(404,"Predio no encontrado")
+
+    existing=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==sale.id))
+    if existing:
+        raise HTTPException(409,"La venta ya tiene una factura electrónica")
+
+    installments=db.scalars(select(Installment).where(Installment.sale_id==sale.id)).all()
+    installment_balance=sum((i.amount-i.paid_amount for i in installments),0)
+    balance=installment_balance if installments else sale.financed_amount
+
+    if balance>0 or prop.status.code!="PAID":
+        raise HTTPException(409,"La factura solo puede generarse cuando el predio está totalmente pagado")
+
+    invoice=ensure_invoice_for_paid_sale(db,sale)
+    audit(db,current,"EINVOICE_CREATE_MANUAL","electronic_invoice",invoice.id,{
+        "sale_id":sale.id,
+        "property_id":sale.property_id,
+        "status":invoice.status,
+        "document_number":invoice.document_number,
+    },request)
+    db.commit();db.refresh(invoice)
+    return {
+        "id":str(invoice.id),
+        "status":invoice.status,
+        "status_label":STATUS_LABELS.get(invoice.status,invoice.status),
+        "document_number":invoice.document_number,
+    }
+
 
 @router.get("")
 def list_invoices(db:Session=Depends(get_db),_:User=Depends(require_permission("invoices.view"))):
@@ -220,6 +257,11 @@ def authorize_sri(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db
             cfg=db.scalar(select(SystemSetting).limit(1))
             if customer and prop and sale and cfg:
                 generate_ride(invoice,cfg,customer,prop,sale)
+            if prop:
+                invoiced_status=db.scalar(select(PropertyStatus).where(PropertyStatus.code=="INVOICED"))
+                if not invoiced_status:
+                    raise ValueError("Estado de predio FACTURADO no configurado")
+                prop.status_id=invoiced_status.id
             invoice.error_message=None
         elif result["state"]=="NO AUTORIZADO":
             invoice.status="REJECTED"
