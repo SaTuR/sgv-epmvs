@@ -58,6 +58,12 @@ export default function SettingsPage(){
         sri_establishment_code:form.sri_establishment_code||'',
         sri_emission_point:form.sri_emission_point||'',
         sri_invoice_sequence:Number(form.sri_invoice_sequence||1),
+        sri_tax_code:form.sri_tax_code||'2',
+        sri_tax_percentage_code:form.sri_tax_percentage_code||'6',
+        sri_tax_rate:Number(form.sri_tax_rate||0),
+        sri_prices_include_tax:Boolean(form.sri_prices_include_tax),
+        sri_payment_method_code:form.sri_payment_method_code||'20',
+        sri_software_provider_ruc:form.sri_software_provider_ruc||null,
       })})
       setForm(data);setMessage('Configuración SRI guardada correctamente.')
     }catch(e:any){setError(e.message||'No fue posible guardar la configuración SRI')}
@@ -268,6 +274,12 @@ export default function SettingsPage(){
           <label><span className="text-sm font-medium text-slate-700">{required('Establecimiento')}</span><input maxLength={3} value={form.sri_establishment_code||''} onChange={e=>setForm({...form,sri_establishment_code:e.target.value.replace(/\D/g,'')})} placeholder="001" className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
           <label><span className="text-sm font-medium text-slate-700">{required('Punto de emisión')}</span><input maxLength={3} value={form.sri_emission_point||''} onChange={e=>setForm({...form,sri_emission_point:e.target.value.replace(/\D/g,'')})} placeholder="001" className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
           <label><span className="text-sm font-medium text-slate-700">{required('Próximo secuencial')}</span><input min="1" max="999999999" type="number" value={form.sri_invoice_sequence||1} onChange={e=>setForm({...form,sri_invoice_sequence:Number(e.target.value)})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+          <label><span className="text-sm font-medium text-slate-700">Código impuesto SRI</span><input value={form.sri_tax_code||'2'} onChange={e=>setForm({...form,sri_tax_code:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+          <label><span className="text-sm font-medium text-slate-700">Código porcentaje SRI</span><input value={form.sri_tax_percentage_code||'6'} onChange={e=>setForm({...form,sri_tax_percentage_code:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+          <label><span className="text-sm font-medium text-slate-700">Tarifa (%)</span><input min="0" max="100" step="0.01" type="number" value={form.sri_tax_rate??0} onChange={e=>setForm({...form,sri_tax_rate:Number(e.target.value)})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+          <label className="flex items-center gap-3 rounded-xl border p-4 text-sm font-medium"><input type="checkbox" checked={Boolean(form.sri_prices_include_tax)} onChange={e=>setForm({...form,sri_prices_include_tax:e.target.checked})}/>Precio incluye impuestos</label>
+          <label><span className="text-sm font-medium text-slate-700">Forma de pago SRI</span><input maxLength={2} value={form.sri_payment_method_code||'20'} onChange={e=>setForm({...form,sri_payment_method_code:e.target.value.replace(/\D/g,'')})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+          <label><span className="text-sm font-medium text-slate-700">RUC proveedor de software</span><input maxLength={13} value={form.sri_software_provider_ruc||''} onChange={e=>setForm({...form,sri_software_provider_ruc:e.target.value.replace(/\D/g,'')})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
           <label className="flex items-center gap-3 rounded-xl border p-4 text-sm font-medium"><input type="checkbox" checked={Boolean(form.sri_accounting_required)} onChange={e=>setForm({...form,sri_accounting_required:e.target.checked})}/>Obligado a llevar contabilidad</label>
           <label><span className="text-sm font-medium text-slate-700">Contribuyente especial</span><input value={form.sri_special_taxpayer_code||''} onChange={e=>setForm({...form,sri_special_taxpayer_code:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
           <label><span className="text-sm font-medium text-slate-700">Agente de retención</span><input value={form.sri_withholding_agent_code||''} onChange={e=>setForm({...form,sri_withholding_agent_code:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
