@@ -16,6 +16,9 @@ export function propertyStatusBadgeClass(status:string){
     case 'PAID':
     case 'PAGADO':
       return 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+    case 'INVOICED':
+    case 'FACTURADO':
+      return 'border border-green-300 bg-green-100 text-green-800'
     case 'AWARDED':
     case 'ADJUDICADO':
       return 'border border-violet-200 bg-violet-50 text-violet-700'
@@ -43,6 +46,8 @@ export function propertyStatusBarClass(status:string){
     case 'EN PROCESO DE PAGO': return 'bg-amber-500'
     case 'PAID':
     case 'PAGADO': return 'bg-emerald-500'
+    case 'INVOICED':
+    case 'FACTURADO': return 'bg-green-700'
     case 'AWARDED':
     case 'ADJUDICADO': return 'bg-violet-500'
     case 'BLOCKED':
