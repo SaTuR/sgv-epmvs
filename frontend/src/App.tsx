@@ -15,6 +15,7 @@ import SecurityPage from './pages/SecurityPage'
 import AuditPage from './pages/AuditPage'
 import CertificatesPage from './pages/CertificatesPage'
 import SettingsPage from './pages/SettingsPage'
+import ElectronicInvoicesPage from './pages/ElectronicInvoicesPage'
 import type { SessionUser } from './types'
 
 export default function App(){
@@ -34,6 +35,7 @@ export default function App(){
     if(active==='Pagos')return <PaymentsPage/>
     if(active==='Cartera')return <ReceivablesPage/>
     if(active==='Certificados')return <CertificatesPage/>
+    if(active==='Facturación electrónica')return <ElectronicInvoicesPage/>
     if(active==='Reportes')return <ReportsPage/>
     if(active==='Usuarios y permisos')return <SecurityPage/>
     if(active==='Configuración')return <SettingsPage/>
