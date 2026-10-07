@@ -13,6 +13,7 @@ from tests.conftest import create_customer_and_property, create_user_with_permis
 from app.services.electronic_invoice import modulo11
 import app.services.sri_signing as sri_signing
 from app.services.sri_client import parse_authorization_response, parse_receipt_response
+from app.services.ride import generate_ride
 
 
 def test_health(client):
@@ -389,6 +390,12 @@ def test_admin_can_generate_sri_xml_for_paid_sale(client,admin_headers):
         "sri_establishment_code":"001",
         "sri_emission_point":"001",
         "sri_invoice_sequence":900000001,
+        "sri_tax_code":"2",
+        "sri_tax_percentage_code":"6",
+        "sri_tax_rate":0,
+        "sri_prices_include_tax":True,
+        "sri_payment_method_code":"20",
+        "sri_software_provider_ruc":None,
     }
     saved=client.put("/api/settings/sri",json=sri_payload,headers=admin_headers)
     assert saved.status_code==200, saved.text
@@ -438,6 +445,12 @@ def test_admin_can_generate_sri_xml_for_paid_sale(client,admin_headers):
         "sri_establishment_code":original.get("sri_establishment_code") or "001",
         "sri_emission_point":original.get("sri_emission_point") or "001",
         "sri_invoice_sequence":original.get("sri_invoice_sequence") or 1,
+        "sri_tax_code":original.get("sri_tax_code") or "2",
+        "sri_tax_percentage_code":original.get("sri_tax_percentage_code") or "6",
+        "sri_tax_rate":original.get("sri_tax_rate") or 0,
+        "sri_prices_include_tax":original.get("sri_prices_include_tax",True),
+        "sri_payment_method_code":original.get("sri_payment_method_code") or "20",
+        "sri_software_provider_ruc":original.get("sri_software_provider_ruc"),
     }
     client.put("/api/settings/sri",json=restore,headers=admin_headers)
 
@@ -567,3 +580,103 @@ def test_parse_sri_authorization_authorized():
     assert result["authorization_number"].startswith("07102026")
     assert result["authorization_date"] is not None
     assert "<factura" in result["document_xml"]
+
+
+def test_admin_can_update_parametric_ride_and_email_settings(client,admin_headers):
+    ride={
+        "ride_title":"RIDE {document_number}",
+        "ride_subtitle":"Proyecto {property_code}",
+        "ride_footer":"Clave {access_key}",
+        "ride_additional_text":"Autorización {authorization_number}",
+        "ride_page_size":"A4",
+        "ride_show_logo":False,
+        "ride_show_qr":True,
+        "ride_qr_size_mm":30,
+        "ride_qr_content_template":"{access_key}",
+        "ride_primary_hex":"#3A6C32",
+    }
+    r=client.put("/api/settings/ride",json=ride,headers=admin_headers)
+    assert r.status_code==200, r.text
+    assert r.json()["ride_title"]=="RIDE {document_number}"
+    assert r.json()["ride_qr_size_mm"]==30
+
+    email={
+        "invoice_email_enabled":False,
+        "invoice_email_send_on_authorization":False,
+        "smtp_host":"smtp.example.com",
+        "smtp_port":587,
+        "smtp_security":"STARTTLS",
+        "smtp_username":"facturas@example.com",
+        "smtp_sender_email":"facturas@example.com",
+        "smtp_sender_name":"EPMVS",
+        "invoice_email_subject_template":"Factura {document_number}",
+        "invoice_email_body_template":"Estimado {customer_name}, factura {document_number}.",
+        "invoice_email_attach_ride":True,
+        "invoice_email_attach_xml":True,
+        "invoice_email_cc":None,
+        "invoice_email_bcc":None,
+        "invoice_email_retries":3,
+        "invoice_email_timeout_seconds":20,
+    }
+    e=client.put("/api/settings/invoice-email",json=email,headers=admin_headers)
+    assert e.status_code==200, e.text
+    assert e.json()["smtp_host"]=="smtp.example.com"
+    assert e.json()["invoice_email_attach_ride"] is True
+
+
+def test_generate_parametric_ride_for_authorized_invoice(tmp_path,monkeypatch):
+    customer_id,property_id=create_customer_and_property()
+    db=SessionLocal()
+    try:
+        from app.models import Customer
+        customer=db.get(Customer,uuid.UUID(customer_id))
+        prop=db.get(Property,uuid.UUID(property_id))
+        sale=Sale(
+            customer_id=customer.id,
+            property_id=prop.id,
+            confirmation_date=date.today(),
+            sale_price=10000,
+            down_payment=10000,
+            financed_amount=0,
+            installment_count=0,
+            frequency="MONTHLY",
+            first_due_date=date.today(),
+        )
+        db.add(sale);db.flush()
+        invoice=ElectronicInvoice(
+            sale_id=sale.id,
+            customer_id=customer.id,
+            property_id=prop.id,
+            issue_date=date.today(),
+            environment="TEST",
+            establishment_code="001",
+            emission_point="001",
+            sequential="999999998",
+            document_number="001-001-999999998",
+            status="AUTHORIZED",
+            total=10000,
+            access_key="1"*49,
+            authorization_number="1"*49,
+            authorized_at=datetime.now(timezone.utc),
+        )
+        cfg=SystemSetting(
+            institution_name="EPMVS",
+            sri_business_name="EPMVS",
+            sri_ruc="1790016919001",
+            ride_title="RIDE {document_number}",
+            ride_footer="Clave {access_key}",
+            ride_page_size="A4",
+            ride_show_logo=False,
+            ride_show_qr=True,
+            ride_qr_size_mm=25,
+            ride_qr_content_template="{access_key}",
+            ride_primary_hex="#3A6C32",
+        )
+        monkeypatch.setattr("app.services.ride.app_settings.upload_path",str(tmp_path))
+        path=generate_ride(invoice,cfg,customer,prop,sale)
+        assert path.exists()
+        assert path.read_bytes().startswith(b"%PDF")
+        assert invoice.ride_path==str(path)
+        db.rollback()
+    finally:
+        db.close()
