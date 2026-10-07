@@ -36,6 +36,11 @@ class SriSettingsUpdate(BaseModel):
     sri_establishment_code:str=Field(pattern=r"^\d{3}$")
     sri_emission_point:str=Field(pattern=r"^\d{3}$")
     sri_invoice_sequence:int=Field(ge=1,le=999999999)
+    sri_tax_code:str=Field(min_length=1,max_length=2)
+    sri_tax_percentage_code:str=Field(min_length=1,max_length=4)
+    sri_tax_rate:float=Field(ge=0,le=100)
+    sri_payment_method_code:str=Field(min_length=2,max_length=2)
+    sri_software_provider_ruc:str|None=None
 
 
 class RideSettingsUpdate(BaseModel):
