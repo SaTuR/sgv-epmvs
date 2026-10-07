@@ -15,9 +15,6 @@ from app.models import Customer, ElectronicInvoice, Property, Sale, SystemSettin
 
 INVOICE_DOC_CODE="01"
 NORMAL_EMISSION="1"
-IVA_CODE="2"
-IVA_NOT_SUBJECT_CODE="6"
-
 
 def modulo11(value:str)->str:
     total=0
@@ -159,6 +156,21 @@ def build_invoice_xml(db:Session,invoice:ElectronicInvoice,cfg:SystemSetting)->b
     access_key=build_access_key(invoice,cfg.sri_ruc)
     invoice.access_key=access_key
 
+    gross=Decimal(invoice.total)
+    rate=Decimal(str(cfg.sri_tax_rate or 0))
+    if rate>0 and cfg.sri_prices_include_tax:
+        base=(gross/(Decimal("1")+(rate/Decimal("100")))).quantize(Decimal("0.01"))
+        tax_value=(gross-base).quantize(Decimal("0.01"))
+        grand_total=gross.quantize(Decimal("0.01"))
+    elif rate>0:
+        base=gross.quantize(Decimal("0.01"))
+        tax_value=(base*rate/Decimal("100")).quantize(Decimal("0.01"))
+        grand_total=(base+tax_value).quantize(Decimal("0.01"))
+    else:
+        base=gross.quantize(Decimal("0.01"))
+        tax_value=Decimal("0.00")
+        grand_total=gross.quantize(Decimal("0.01"))
+
     root=ET.Element("factura",{"id":"comprobante","version":"2.1.0"})
     trib=sub(root,"infoTributaria")
     sub(trib,"ambiente",environment_code(invoice.environment))
@@ -185,23 +197,23 @@ def build_invoice_xml(db:Session,invoice:ElectronicInvoice,cfg:SystemSetting)->b
     sub(info,"identificacionComprador",customer.identification)
     if customer.address:
         sub(info,"direccionComprador",customer.address)
-    sub(info,"totalSinImpuestos",money(invoice.total))
+    sub(info,"totalSinImpuestos",money(base))
     sub(info,"totalDescuento","0.00")
 
     taxes=sub(info,"totalConImpuestos")
     tax=sub(taxes,"totalImpuesto")
-    sub(tax,"codigo",IVA_CODE)
-    sub(tax,"codigoPorcentaje",IVA_NOT_SUBJECT_CODE)
-    sub(tax,"baseImponible",money(invoice.total))
-    sub(tax,"valor","0.00")
+    sub(tax,"codigo",cfg.sri_tax_code)
+    sub(tax,"codigoPorcentaje",cfg.sri_tax_percentage_code)
+    sub(tax,"baseImponible",money(base))
+    sub(tax,"valor",money(tax_value))
     sub(info,"propina","0.00")
-    sub(info,"importeTotal",money(invoice.total))
+    sub(info,"importeTotal",money(grand_total))
     sub(info,"moneda","DOLAR")
 
     pagos=sub(info,"pagos")
     pago=sub(pagos,"pago")
-    sub(pago,"formaPago","20")
-    sub(pago,"total",money(invoice.total))
+    sub(pago,"formaPago",cfg.sri_payment_method_code)
+    sub(pago,"total",money(grand_total))
 
     detalles=sub(root,"detalles")
     detalle=sub(detalles,"detalle")
@@ -211,16 +223,16 @@ def build_invoice_xml(db:Session,invoice:ElectronicInvoice,cfg:SystemSetting)->b
         descripcion+=f" - Clave catastral {prop.cadastral_key}"
     sub(detalle,"descripcion",descripcion[:300])
     sub(detalle,"cantidad","1.000000")
-    sub(detalle,"precioUnitario",money(invoice.total))
+    sub(detalle,"precioUnitario",money(base))
     sub(detalle,"descuento","0.00")
-    sub(detalle,"precioTotalSinImpuesto",money(invoice.total))
+    sub(detalle,"precioTotalSinImpuesto",money(base))
     imp=sub(detalle,"impuestos")
     line_tax=sub(imp,"impuesto")
-    sub(line_tax,"codigo",IVA_CODE)
-    sub(line_tax,"codigoPorcentaje",IVA_NOT_SUBJECT_CODE)
-    sub(line_tax,"tarifa","0.00")
-    sub(line_tax,"baseImponible",money(invoice.total))
-    sub(line_tax,"valor","0.00")
+    sub(line_tax,"codigo",cfg.sri_tax_code)
+    sub(line_tax,"codigoPorcentaje",cfg.sri_tax_percentage_code)
+    sub(line_tax,"tarifa",money(rate))
+    sub(line_tax,"baseImponible",money(base))
+    sub(line_tax,"valor",money(tax_value))
 
     extras=[]
     if customer.email:
