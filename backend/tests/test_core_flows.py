@@ -12,6 +12,7 @@ from app.models import ElectronicInvoice, Installment, Permission, Property, Rol
 from tests.conftest import create_customer_and_property, create_user_with_permissions, login_headers
 from app.services.electronic_invoice import modulo11
 import app.services.sri_signing as sri_signing
+from app.services.sri_client import parse_authorization_response, parse_receipt_response
 
 
 def test_health(client):
@@ -500,3 +501,69 @@ def test_xades_signing_uses_isolated_pkcs12(tmp_path,monkeypatch):
     assert b"Signature" in signed
     assert b"SignedProperties" in signed
     assert b"X509Certificate" in signed
+
+
+def test_parse_sri_receipt_received():
+    xml=b'''<?xml version="1.0" encoding="UTF-8"?>
+    <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+      <soap:Body>
+        <ns2:validarComprobanteResponse xmlns:ns2="http://ec.gob.sri.ws.recepcion">
+          <RespuestaRecepcionComprobante>
+            <estado>RECIBIDA</estado>
+          </RespuestaRecepcionComprobante>
+        </ns2:validarComprobanteResponse>
+      </soap:Body>
+    </soap:Envelope>'''
+    result=parse_receipt_response(xml)
+    assert result["state"]=="RECIBIDA"
+    assert result["messages"]==[]
+
+
+def test_parse_sri_receipt_returned_with_message():
+    xml=b'''<?xml version="1.0" encoding="UTF-8"?>
+    <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+      <soap:Body>
+        <respuesta>
+          <estado>DEVUELTA</estado>
+          <comprobantes>
+            <comprobante>
+              <mensajes>
+                <mensaje>
+                  <identificador>43</identificador>
+                  <mensaje>CLAVE DE ACCESO REGISTRADA</mensaje>
+                  <informacionAdicional>QA</informacionAdicional>
+                </mensaje>
+              </mensajes>
+            </comprobante>
+          </comprobantes>
+        </respuesta>
+      </soap:Body>
+    </soap:Envelope>'''
+    result=parse_receipt_response(xml)
+    assert result["state"]=="DEVUELTA"
+    assert "43" in result["messages"][0]
+    assert "CLAVE DE ACCESO REGISTRADA" in result["messages"][0]
+
+
+def test_parse_sri_authorization_authorized():
+    xml=b'''<?xml version="1.0" encoding="UTF-8"?>
+    <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+      <soap:Body>
+        <respuestaAutorizacionComprobante>
+          <autorizaciones>
+            <autorizacion>
+              <estado>AUTORIZADO</estado>
+              <numeroAutorizacion>0710202601179000000100110010000000011234567812</numeroAutorizacion>
+              <fechaAutorizacion>2026-10-07T10:00:00-05:00</fechaAutorizacion>
+              <ambiente>PRUEBAS</ambiente>
+              <comprobante>&lt;factura id="comprobante"&gt;&lt;/factura&gt;</comprobante>
+            </autorizacion>
+          </autorizaciones>
+        </respuestaAutorizacionComprobante>
+      </soap:Body>
+    </soap:Envelope>'''
+    result=parse_authorization_response(xml)
+    assert result["state"]=="AUTORIZADO"
+    assert result["authorization_number"].startswith("07102026")
+    assert result["authorization_date"] is not None
+    assert "<factura" in result["document_xml"]
