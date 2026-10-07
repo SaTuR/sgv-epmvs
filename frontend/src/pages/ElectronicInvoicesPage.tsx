@@ -76,8 +76,10 @@ export default function ElectronicInvoicesPage(){
 
   async function downloadRide(id:string){
     setAction(id);setError('')
-    try{await apiDownload('/electronic-invoices/'+id+'/ride.pdf','RIDE.pdf')}
-    catch(e:any){setError(e.message||'No fue posible descargar el RIDE')}
+    try{
+      await apiFetch('/electronic-invoices/'+id+'/generate-ride',{method:'POST'})
+      await apiDownload('/electronic-invoices/'+id+'/ride.pdf','RIDE.pdf')
+    }catch(e:any){setError(e.message||'No fue posible generar el RIDE')}
     finally{setAction('')}
   }
 
