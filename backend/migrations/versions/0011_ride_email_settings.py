@@ -17,6 +17,7 @@ def upgrade():
     op.add_column("system_settings",sa.Column("sri_tax_code",sa.String(length=2),nullable=False,server_default="2"))
     op.add_column("system_settings",sa.Column("sri_tax_percentage_code",sa.String(length=4),nullable=False,server_default="6"))
     op.add_column("system_settings",sa.Column("sri_tax_rate",sa.Numeric(7,4),nullable=False,server_default="0"))
+    op.add_column("system_settings",sa.Column("sri_prices_include_tax",sa.Boolean(),nullable=False,server_default=sa.true()))
     op.add_column("system_settings",sa.Column("sri_payment_method_code",sa.String(length=2),nullable=False,server_default="20"))
     op.add_column("system_settings",sa.Column("sri_software_provider_ruc",sa.String(length=13),nullable=True))
 
@@ -62,7 +63,7 @@ def downgrade():
         "ride_primary_hex","ride_qr_content_template","ride_qr_size_mm","ride_show_qr",
         "ride_logo_path","ride_show_logo","ride_page_size","ride_additional_text",
         "ride_footer","ride_subtitle","ride_title",
-        "sri_software_provider_ruc","sri_payment_method_code","sri_tax_rate",
+        "sri_software_provider_ruc","sri_payment_method_code","sri_prices_include_tax","sri_tax_rate",
         "sri_tax_percentage_code","sri_tax_code"
     ]:
         op.drop_column("system_settings",name)
