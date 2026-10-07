@@ -68,6 +68,10 @@ class SystemSetting(Base):
     ride_qr_size_mm:Mapped[int]=mapped_column(Integer,default=28)
     ride_qr_content_template:Mapped[str]=mapped_column(String(800),default="{access_key}")
     ride_primary_hex:Mapped[str]=mapped_column(String(7),default="#3A6C32")
+    ride_code_type:Mapped[str]=mapped_column(String(20),default="BARCODE")
+    ride_barcode_height_mm:Mapped[int]=mapped_column(Integer,default=18)
+    ride_show_payment_table:Mapped[bool]=mapped_column(Boolean,default=True)
+    ride_show_additional_info:Mapped[bool]=mapped_column(Boolean,default=True)
 
     invoice_email_enabled:Mapped[bool]=mapped_column(Boolean,default=False)
     invoice_email_send_on_authorization:Mapped[bool]=mapped_column(Boolean,default=False)
