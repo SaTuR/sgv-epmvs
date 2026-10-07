@@ -55,6 +55,10 @@ class RideSettingsUpdate(BaseModel):
     ride_qr_size_mm:int=Field(ge=15,le=50)
     ride_qr_content_template:str=Field(min_length=1,max_length=800)
     ride_primary_hex:str=Field(pattern=r"^#[0-9A-Fa-f]{6}$")
+    ride_code_type:str=Field(pattern=r"^(BARCODE|QR|NONE)$")
+    ride_barcode_height_mm:int=Field(ge=8,le=30)
+    ride_show_payment_table:bool=True
+    ride_show_additional_info:bool=True
 
 
 class InvoiceEmailSettingsUpdate(BaseModel):
