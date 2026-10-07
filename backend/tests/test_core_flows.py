@@ -1,11 +1,17 @@
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import select
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import pkcs12
+from cryptography.x509.oid import NameOID
 
 from app.db import SessionLocal
-from app.models import ElectronicInvoice, Installment, Permission, Property, Role, Sale
+from app.models import ElectronicInvoice, Installment, Permission, Property, Role, Sale, SystemSetting
 from tests.conftest import create_customer_and_property, create_user_with_permissions, login_headers
 from app.services.electronic_invoice import modulo11
+import app.services.sri_signing as sri_signing
 
 
 def test_health(client):
@@ -433,3 +439,63 @@ def test_admin_can_generate_sri_xml_for_paid_sale(client,admin_headers):
         "sri_invoice_sequence":original.get("sri_invoice_sequence") or 1,
     }
     client.put("/api/settings/sri",json=restore,headers=admin_headers)
+
+
+def test_xades_signing_uses_isolated_pkcs12(tmp_path,monkeypatch):
+    key=rsa.generate_private_key(public_exponent=65537,key_size=2048)
+    name=x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,"QA EPMVS")])
+    cert=(
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(datetime.now(timezone.utc)-timedelta(days=1))
+        .not_valid_after(datetime.now(timezone.utc)+timedelta(days=30))
+        .add_extension(x509.BasicConstraints(ca=False,path_length=None),critical=True)
+        .add_extension(x509.KeyUsage(
+            digital_signature=True,
+            content_commitment=True,
+            key_encipherment=True,
+            data_encipherment=False,
+            key_agreement=False,
+            key_cert_sign=False,
+            crl_sign=False,
+            encipher_only=None,
+            decipher_only=None,
+        ),critical=True)
+        .sign(key,hashes.SHA256())
+    )
+    password="QaCert123!"
+    bundle=pkcs12.serialize_key_and_certificates(
+        name=b"qa-epmvs",
+        key=key,
+        cert=cert,
+        cas=None,
+        encryption_algorithm=serialization.BestAvailableEncryption(password.encode()),
+    )
+
+    cert_dir=tmp_path/"sri"
+    cert_path=cert_dir/"firma_electronica.p12"
+    monkeypatch.setattr(sri_signing,"CERT_DIR",cert_dir)
+    monkeypatch.setattr(sri_signing,"CERT_PATH",cert_path)
+
+    cfg=SystemSetting()
+    sri_signing.install_certificate(bundle,password,cfg)
+    assert cert_path.exists()
+    assert cfg.sri_certificate_password_encrypted!=password
+
+    xml_path=tmp_path/"invoice.xml"
+    xml_path.write_text('<?xml version="1.0" encoding="UTF-8"?><factura id="comprobante"><infoTributaria/></factura>',encoding="utf-8")
+    invoice=ElectronicInvoice(
+        status="XML_GENERATED",
+        xml_path=str(xml_path),
+        access_key="1"*49,
+        total=100,
+    )
+    signed_path=sri_signing.sign_invoice_xml(invoice,cfg)
+    signed=signed_path.read_bytes()
+    assert invoice.status=="SIGNED"
+    assert b"Signature" in signed
+    assert b"SignedProperties" in signed
+    assert b"X509Certificate" in signed
