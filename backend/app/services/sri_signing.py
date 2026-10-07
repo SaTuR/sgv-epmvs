@@ -8,11 +8,11 @@ from pathlib import Path
 from cryptography import x509
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs12
 from lxml import etree
 from signxml import DigestAlgorithm, SignatureMethod
-from signxml.xades import XAdESDataObjectFormat, XAdESSigner, XAdESVerifier
+from signxml.xades import XAdESDataObjectFormat, XAdESSignatureConfiguration, XAdESSigner, XAdESVerifier
 
 from app.config import settings as app_settings
 from app.models import ElectronicInvoice, SystemSetting
@@ -55,8 +55,10 @@ def load_pkcs12(data:bytes,password:str):
         raise ValueError("No se pudo abrir el certificado. Verifique el archivo y la contraseña.") from exc
     if key is None or cert is None:
         raise ValueError("El archivo no contiene una clave privada y certificado utilizables.")
-    if not isinstance(key,(rsa.RSAPrivateKey,ec.EllipticCurvePrivateKey)):
-        raise ValueError("El tipo de clave privada del certificado no está soportado.")
+    if not isinstance(key,rsa.RSAPrivateKey):
+        raise ValueError("El SRI requiere un certificado con clave RSA.")
+    if key.key_size!=2048:
+        raise ValueError("El SRI requiere una clave RSA de 2048 bits.")
     valid_from,valid_to=_cert_times(cert)
     now=datetime.now(timezone.utc)
     if now<valid_from:
@@ -106,12 +108,10 @@ def _load_installed_certificate(row:SystemSetting):
     return load_pkcs12(data,password)
 
 
-def _signature_method(key):
-    if isinstance(key,rsa.RSAPrivateKey):
-        return SignatureMethod.RSA_SHA256
-    if isinstance(key,ec.EllipticCurvePrivateKey):
-        return SignatureMethod.ECDSA_SHA256
-    raise ValueError("Tipo de clave privada no soportado para firma.")
+class SriXAdESSigner(XAdESSigner):
+    def check_deprecated_methods(self):
+        # El SRI exige RSA-SHA1 en su ficha técnica vigente.
+        return
 
 
 def sign_invoice_xml(invoice:ElectronicInvoice,row:SystemSetting)->Path:
@@ -129,14 +129,14 @@ def sign_invoice_xml(invoice:ElectronicInvoice,row:SystemSetting)->Path:
     root=etree.fromstring(Path(invoice.xml_path).read_bytes(),parser=parser)
 
     cert_chain=[cert,*chain]
-    signer=XAdESSigner(
+    signer=SriXAdESSigner(
         claimed_roles=["supplier"],
         data_object_format=XAdESDataObjectFormat(
             Description="Factura electrónica",
             MimeType="text/xml",
         ),
-        signature_algorithm=_signature_method(key),
-        digest_algorithm=DigestAlgorithm.SHA256,
+        signature_algorithm=SignatureMethod.RSA_SHA1,
+        digest_algorithm=DigestAlgorithm.SHA1,
         c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
     )
     signed=signer.sign(
@@ -149,10 +149,15 @@ def sign_invoice_xml(invoice:ElectronicInvoice,row:SystemSetting)->Path:
     )
 
     cert_pem=cert.public_bytes(serialization.Encoding.PEM)
+    verify_config=XAdESSignatureConfiguration(
+        signature_methods=list(SignatureMethod),
+        digest_algorithms=list(DigestAlgorithm),
+    )
     XAdESVerifier().verify(
         signed,
         x509_cert=cert_pem,
         expect_references=3,
+        expect_config=verify_config,
     )
 
     target=Path(invoice.xml_path).with_name(f"{invoice.access_key}_signed.xml")
