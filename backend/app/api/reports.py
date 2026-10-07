@@ -71,6 +71,19 @@ def dashboard(stage_id:uuid.UUID|None=None,db:Session=Depends(get_db),_:User=Dep
     invoices_authorized=sum(1 for x in invoices if x.status=="AUTHORIZED")
     invoices_rejected=sum(1 for x in invoices if x.status in {"REJECTED","ERROR"})
 
+    paid_pending_rows=[]
+    for s in sales:
+        prop=db.get(Property,s.property_id)
+        if not prop or prop.status.code!="PAID" or s.id in invoice_sale_ids:
+            continue
+        customer=db.get(Customer,s.customer_id)
+        paid_pending_rows.append({
+            "sale_id":str(s.id),
+            "property":prop.code,
+            "customer":customer.full_name if customer else "",
+            "sale_price":float(s.sale_price),
+        })
+
     monthly={}
     for p in payments:
         key=p.payment_date.strftime("%Y-%m")
@@ -89,6 +102,7 @@ def dashboard(stage_id:uuid.UUID|None=None,db:Session=Depends(get_db),_:User=Dep
         },
         "properties_by_status":[{"status":k,"count":v} for k,v in sorted(status_counts.items())],
         "collections_by_month":[{"month":k,"amount":float(v)} for k,v in sorted(monthly.items())[-12:]],
+        "paid_pending_invoices":paid_pending_rows[:20],
     }
 
 @router.get("/properties")
