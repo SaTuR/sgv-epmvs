@@ -7,7 +7,7 @@ PERMISSIONS = [
     ("roles.manage","Administrar roles y permisos"),("customers.manage","Administrar clientes"),
     ("projects.manage","Administrar proyectos y etapas"),("properties.manage","Administrar predios"),
     ("sales.manage","Administrar ventas y reservas"),("reservations.release","Liberar solar reservado"),("payments.manage","Registrar y administrar pagos"),("documents.view","Consultar certificados y documentos"),
-    ("receivables.view","Consultar cuentas por cobrar"),("reports.view","Consultar reportes"),("invoices.view","Consultar facturación electrónica"),("audit.view","Consultar auditoría"),
+    ("receivables.view","Consultar cuentas por cobrar"),("reports.view","Consultar reportes"),("invoices.view","Consultar facturación electrónica"),("invoices.create","Generar facturas electrónicas"),("audit.view","Consultar auditoría"),
 ]
 ROLES = [
     ("Administrador","Acceso completo"),("Comercial / Ventas","Clientes, reservas y ventas"),
@@ -16,7 +16,7 @@ ROLES = [
 ]
 STATUSES = [
     ("AVAILABLE","Disponible",10),("RESERVED","Reservado",20),("CONFIRMED","Compra confirmada",30),
-    ("PAYING","En proceso de pago",40),("PAID","Pagado",50),("AWARDED","Adjudicado",60),
+    ("PAYING","En proceso de pago",40),("PAID","Pagado",50),("INVOICED","Facturado",55),("AWARDED","Adjudicado",60),
     ("BLOCKED","Bloqueado",70),("CANCELLED","Anulado",80),
 ]
 
