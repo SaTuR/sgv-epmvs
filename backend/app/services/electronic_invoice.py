@@ -77,11 +77,27 @@ def allocate_number(db:Session,invoice:ElectronicInvoice,cfg:SystemSetting)->Non
     seq=int(cfg.sri_invoice_sequence or 1)
     if seq<1 or seq>999_999_999:
         raise ValueError("El secuencial SRI configurado está fuera de rango")
-    invoice.establishment_code=cfg.sri_establishment_code
-    invoice.emission_point=cfg.sri_emission_point
-    invoice.sequential=f"{seq:09d}"
-    invoice.document_number=f"{cfg.sri_establishment_code}-{cfg.sri_emission_point}-{invoice.sequential}"
-    cfg.sri_invoice_sequence=seq+1
+
+    establishment=cfg.sri_establishment_code
+    emission_point=cfg.sri_emission_point
+    while seq<=999_999_999:
+        sequential=f"{seq:09d}"
+        document_number=f"{establishment}-{emission_point}-{sequential}"
+        exists=db.scalar(
+            select(ElectronicInvoice.id).where(
+                ElectronicInvoice.document_number==document_number
+            )
+        )
+        if not exists:
+            invoice.establishment_code=establishment
+            invoice.emission_point=emission_point
+            invoice.sequential=sequential
+            invoice.document_number=document_number
+            cfg.sri_invoice_sequence=seq+1
+            return
+        seq+=1
+
+    raise ValueError("No existen secuenciales SRI disponibles para el establecimiento y punto de emisión configurados.")
 
 
 def ensure_invoice_for_paid_sale(db:Session,sale:Sale):
