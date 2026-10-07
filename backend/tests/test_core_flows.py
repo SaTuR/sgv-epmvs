@@ -100,6 +100,8 @@ def test_full_down_payment_creates_no_zero_installments(client,admin_headers):
         assert sale.financed_amount==0
         prop=db.get(Property,uuid.UUID(property_id))
         assert prop.status.code=="PAID"
+        invoice=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==sale.id))
+        assert invoice is None
     finally:
         db.close()
 
@@ -734,3 +736,56 @@ def test_manual_invoice_rejects_unpaid_sale(client,admin_headers):
     sale_id=sale.json()["id"]
     denied=client.post(f"/api/electronic-invoices/sales/{sale_id}/create",headers=admin_headers)
     assert denied.status_code==409
+
+
+def test_authorized_invoice_marks_property_as_invoiced(client,admin_headers,monkeypatch):
+    customer_id,property_id=create_customer_and_property()
+    sale=client.post("/api/sales",json={
+        "customer_id":customer_id,
+        "property_id":property_id,
+        "sale_price":12000,
+        "down_payment":12000,
+        "installment_count":1,
+        "frequency":"MONTHLY",
+        "first_due_date":str(date.today()+timedelta(days=30)),
+    },headers=admin_headers)
+    assert sale.status_code==200, sale.text
+    sale_id=sale.json()["id"]
+
+    created=client.post(f"/api/electronic-invoices/sales/{sale_id}/create",headers=admin_headers)
+    assert created.status_code==200, created.text
+    invoice_id=created.json()["id"]
+
+    db=SessionLocal()
+    try:
+        invoice=db.get(ElectronicInvoice,uuid.UUID(invoice_id))
+        invoice.status="SENT"
+        invoice.access_key="2"*49
+        db.commit()
+    finally:
+        db.close()
+
+    monkeypatch.setattr("app.api.electronic_invoices.request_authorization",lambda invoice:{
+        "state":"AUTORIZADO",
+        "authorization_number":"3"*49,
+        "authorization_date":datetime.now(timezone.utc),
+        "environment":"PRUEBAS",
+        "document_xml":"<factura id=\"comprobante\"></factura>",
+        "messages":[],
+        "raw":"<respuesta>QA</respuesta>",
+    })
+    monkeypatch.setattr("app.api.electronic_invoices.save_authorization_xml",lambda invoice,result:None)
+    monkeypatch.setattr("app.api.electronic_invoices.generate_ride",lambda invoice,cfg,customer,prop,sale:None)
+
+    authorized=client.post(f"/api/electronic-invoices/{invoice_id}/authorize",headers=admin_headers)
+    assert authorized.status_code==200, authorized.text
+    assert authorized.json()["status"]=="AUTHORIZED"
+
+    db=SessionLocal()
+    try:
+        prop=db.get(Property,uuid.UUID(property_id))
+        invoice=db.get(ElectronicInvoice,uuid.UUID(invoice_id))
+        assert prop.status.code=="INVOICED"
+        assert invoice.status=="AUTHORIZED"
+    finally:
+        db.close()
