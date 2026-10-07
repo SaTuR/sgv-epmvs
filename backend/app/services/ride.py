@@ -69,8 +69,9 @@ def generate_ride(invoice:ElectronicInvoice,cfg:SystemSetting,customer:Customer,
 
     header_text=[
         Paragraph(render_template(cfg.ride_title,values),title),
-        Paragraph(render_template(cfg.ride_subtitle,values),small) if cfg.ride_subtitle else "",
     ]
+    if cfg.ride_subtitle:
+        header_text.append(Paragraph(render_template(cfg.ride_subtitle,values),small))
     ht=Table([[header[0],header_text]],colWidths=[55*mm,125*mm])
     ht.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"TOP"),("BOX",(0,0),(-1,-1),0.5,colors.lightgrey),("INNERGRID",(0,0),(-1,-1),0.25,colors.lightgrey),("PADDING",(0,0),(-1,-1),5)]))
     story += [ht,Spacer(1,5*mm)]
