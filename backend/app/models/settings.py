@@ -57,9 +57,9 @@ class SystemSetting(Base):
     sri_certificate_valid_from:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     sri_certificate_valid_to:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
 
-    ride_title:Mapped[str]=mapped_column(String(180),default="RIDE - FACTURA ELECTRÓNICA")
+    ride_title:Mapped[str]=mapped_column(String(180),default="Factura Electrónica")
     ride_subtitle:Mapped[str|None]=mapped_column(String(255),nullable=True)
-    ride_footer:Mapped[str]=mapped_column(String(500),default="Documento generado por el Sistema de Gestión y Venta")
+    ride_footer:Mapped[str]=mapped_column(String(500),default="Documento generado electrónicamente")
     ride_additional_text:Mapped[str|None]=mapped_column(Text,nullable=True)
     ride_page_size:Mapped[str]=mapped_column(String(20),default="A4")
     ride_show_logo:Mapped[bool]=mapped_column(Boolean,default=True)
