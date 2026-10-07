@@ -59,6 +59,7 @@ def serialize(row:SystemSetting):
         "sri_tax_code":row.sri_tax_code,
         "sri_tax_percentage_code":row.sri_tax_percentage_code,
         "sri_tax_rate":float(row.sri_tax_rate or 0),
+        "sri_prices_include_tax":row.sri_prices_include_tax,
         "sri_payment_method_code":row.sri_payment_method_code,
         "sri_software_provider_ruc":row.sri_software_provider_ruc,
         "sri_certificate_configured":certificate_ready(row),
