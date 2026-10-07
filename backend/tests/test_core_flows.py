@@ -309,7 +309,7 @@ def test_backup_settings_are_admin_only_and_keep_two(client,admin_headers):
     client.put("/api/settings/backup",json=payload,headers=admin_headers)
 
 
-def test_einvoice_created_only_when_sale_is_fully_paid(client,admin_headers):
+def test_paid_sale_requires_manual_invoice_creation(client,admin_headers):
     customer_id,property_id=create_customer_and_property()
     sale=client.post("/api/sales",json={
         "customer_id":customer_id,
@@ -323,13 +323,6 @@ def test_einvoice_created_only_when_sale_is_fully_paid(client,admin_headers):
     assert sale.status_code==200, sale.text
     sale_id=sale.json()["id"]
 
-    db=SessionLocal()
-    try:
-        invoice=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==uuid.UUID(sale_id)))
-        assert invoice is None
-    finally:
-        db.close()
-
     payment=client.post("/api/payments",json={
         "sale_id":sale_id,
         "payment_date":str(date.today()),
@@ -340,14 +333,28 @@ def test_einvoice_created_only_when_sale_is_fully_paid(client,admin_headers):
 
     db=SessionLocal()
     try:
+        invoice=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==uuid.UUID(sale_id)))
+        prop=db.get(Property,uuid.UUID(property_id))
+        assert invoice is None
+        assert prop.status.code=="PAID"
+    finally:
+        db.close()
+
+    created=client.post(f"/api/electronic-invoices/sales/{sale_id}/create",headers=admin_headers)
+    assert created.status_code==200, created.text
+
+    db=SessionLocal()
+    try:
         invoices=db.scalars(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==uuid.UUID(sale_id))).all()
         assert len(invoices)==1
         assert float(invoices[0].total)==10000
+        prop=db.get(Property,uuid.UUID(property_id))
+        assert prop.status.code=="PAID"
     finally:
         db.close()
 
 
-def test_einvoice_is_idempotent_for_fully_paid_sale(client,admin_headers):
+def test_manual_invoice_cannot_be_duplicated(client,admin_headers):
     customer_id,property_id=create_customer_and_property()
     sale=client.post("/api/sales",json={
         "customer_id":customer_id,
@@ -360,6 +367,11 @@ def test_einvoice_is_idempotent_for_fully_paid_sale(client,admin_headers):
     },headers=admin_headers)
     assert sale.status_code==200, sale.text
     sale_id=sale.json()["id"]
+
+    first=client.post(f"/api/electronic-invoices/sales/{sale_id}/create",headers=admin_headers)
+    assert first.status_code==200, first.text
+    duplicate=client.post(f"/api/electronic-invoices/sales/{sale_id}/create",headers=admin_headers)
+    assert duplicate.status_code==409
 
     db=SessionLocal()
     try:
@@ -412,6 +424,9 @@ def test_admin_can_generate_sri_xml_for_paid_sale(client,admin_headers):
     },headers=admin_headers)
     assert sale.status_code==200, sale.text
     sale_id=sale.json()["id"]
+
+    created=client.post(f"/api/electronic-invoices/sales/{sale_id}/create",headers=admin_headers)
+    assert created.status_code==200, created.text
 
     db=SessionLocal()
     try:
@@ -680,3 +695,42 @@ def test_generate_parametric_ride_for_authorized_invoice(tmp_path,monkeypatch):
         db.rollback()
     finally:
         db.close()
+
+
+def test_manual_invoice_requires_permission(client,admin_headers):
+    customer_id,property_id=create_customer_and_property()
+    sale=client.post("/api/sales",json={
+        "customer_id":customer_id,
+        "property_id":property_id,
+        "sale_price":8000,
+        "down_payment":8000,
+        "installment_count":1,
+        "frequency":"MONTHLY",
+        "first_due_date":str(date.today()+timedelta(days=30)),
+    },headers=admin_headers)
+    assert sale.status_code==200
+    sale_id=sale.json()["id"]
+
+    email="qa-no-invoice-"+uuid.uuid4().hex[:6]+"@example.com"
+    password="QaPass123!"
+    create_user_with_permissions(email,password,["sales.manage"])
+    headers=login_headers(client,email,password)
+    denied=client.post(f"/api/electronic-invoices/sales/{sale_id}/create",headers=headers)
+    assert denied.status_code==403
+
+
+def test_manual_invoice_rejects_unpaid_sale(client,admin_headers):
+    customer_id,property_id=create_customer_and_property()
+    sale=client.post("/api/sales",json={
+        "customer_id":customer_id,
+        "property_id":property_id,
+        "sale_price":10000,
+        "down_payment":1000,
+        "installment_count":9,
+        "frequency":"MONTHLY",
+        "first_due_date":str(date.today()+timedelta(days=30)),
+    },headers=admin_headers)
+    assert sale.status_code==200
+    sale_id=sale.json()["id"]
+    denied=client.post(f"/api/electronic-invoices/sales/{sale_id}/create",headers=admin_headers)
+    assert denied.status_code==409
