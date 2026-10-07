@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, require_permission
 from app.config import settings
 from app.models import SystemSetting, User
-from app.schemas.settings import BackupSettingsUpdate, SystemSettingsUpdate
+from app.schemas.settings import BackupSettingsUpdate, SriSettingsUpdate, SystemSettingsUpdate
 from app.services.audit import audit
 from app.services.backup import RCLONE_CONFIG, rclone_config_present, test_remote
 
@@ -44,6 +44,17 @@ def serialize(row:SystemSetting):
         "backup_last_status":row.backup_last_status,
         "backup_last_filename":row.backup_last_filename,
         "backup_last_error":row.backup_last_error,
+        "sri_enabled":row.sri_enabled,
+        "sri_environment":row.sri_environment,
+        "sri_ruc":row.sri_ruc,
+        "sri_business_name":row.sri_business_name,
+        "sri_trade_name":row.sri_trade_name,
+        "sri_accounting_required":row.sri_accounting_required,
+        "sri_special_taxpayer_code":row.sri_special_taxpayer_code,
+        "sri_withholding_agent_code":row.sri_withholding_agent_code,
+        "sri_establishment_code":row.sri_establishment_code,
+        "sri_emission_point":row.sri_emission_point,
+        "sri_invoice_sequence":row.sri_invoice_sequence,
         "updated_at":row.updated_at,
     }
 
@@ -142,3 +153,26 @@ def request_backup(request:Request,db:Session=Depends(get_db),current:User=Depen
     audit(db,current,"BACKUP_RUN_REQUESTED","system_settings",row.id,{"provider":row.backup_provider,"remote":row.backup_remote_name},request)
     db.commit()
     return {"ok":True,"message":"Respaldo agregado a la cola"}
+
+
+@router.put("/sri")
+def update_sri_settings(payload:SriSettingsUpdate,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
+    row=get_settings(db)
+    old={
+        "sri_enabled":row.sri_enabled,
+        "sri_environment":row.sri_environment,
+        "sri_ruc":row.sri_ruc,
+        "sri_business_name":row.sri_business_name,
+        "sri_trade_name":row.sri_trade_name,
+        "sri_accounting_required":row.sri_accounting_required,
+        "sri_special_taxpayer_code":row.sri_special_taxpayer_code,
+        "sri_withholding_agent_code":row.sri_withholding_agent_code,
+        "sri_establishment_code":row.sri_establishment_code,
+        "sri_emission_point":row.sri_emission_point,
+        "sri_invoice_sequence":row.sri_invoice_sequence,
+    }
+    for k,v in payload.model_dump().items():
+        setattr(row,k,v)
+    audit(db,current,"SRI_SETTINGS_UPDATE","system_settings",row.id,{"old":old,"new":payload.model_dump()},request)
+    db.commit();db.refresh(row)
+    return serialize(row)
