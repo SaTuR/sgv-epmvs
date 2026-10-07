@@ -1,16 +1,20 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from fastapi.responses import FileResponse
 
 from app.api.deps import get_db, require_permission
 from app.models import Customer, ElectronicInvoice, Property, Sale, User
+from app.services.audit import audit
+from app.services.electronic_invoice import prepare_invoice_xml
 
 router=APIRouter(prefix="/api/electronic-invoices",tags=["Facturación electrónica"])
 
 STATUS_LABELS={
     "PENDING_CONFIG":"Pendiente de configuración SRI",
     "PENDING_XML":"Pendiente de generar XML",
+    "XML_GENERATED":"XML generado",
     "SIGNED":"Firmada",
     "SENT":"Enviada al SRI",
     "AUTHORIZED":"Autorizada",
@@ -69,3 +73,44 @@ def invoice_detail(invoice_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depend
         "ride_path":x.ride_path,
         "error_message":x.error_message,
     }
+
+
+@router.post("/{invoice_id}/generate-xml")
+def generate_xml(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("invoices.view"))):
+    invoice=db.get(ElectronicInvoice,invoice_id)
+    if not invoice:
+        raise HTTPException(404,"Factura electrónica no encontrada")
+    if invoice.status in {"SIGNED","SENT","AUTHORIZED"}:
+        raise HTTPException(409,"La factura ya avanzó a una etapa posterior y no puede regenerarse")
+    try:
+        prepare_invoice_xml(db,invoice)
+        audit(db,current,"EINVOICE_XML_GENERATED","electronic_invoice",invoice.id,{
+            "sale_id":invoice.sale_id,
+            "document_number":invoice.document_number,
+            "access_key":invoice.access_key,
+        },request)
+        db.commit();db.refresh(invoice)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(400,str(exc))
+    return {
+        "id":str(invoice.id),
+        "status":invoice.status,
+        "status_label":STATUS_LABELS.get(invoice.status,invoice.status),
+        "document_number":invoice.document_number,
+        "access_key":invoice.access_key,
+    }
+
+
+@router.get("/{invoice_id}/xml")
+def download_xml(invoice_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depends(require_permission("invoices.view"))):
+    invoice=db.get(ElectronicInvoice,invoice_id)
+    if not invoice:
+        raise HTTPException(404,"Factura electrónica no encontrada")
+    if not invoice.xml_path:
+        raise HTTPException(404,"La factura todavía no tiene XML generado")
+    return FileResponse(
+        invoice.xml_path,
+        media_type="application/xml",
+        filename=f"{invoice.access_key or invoice.id}.xml",
+    )
