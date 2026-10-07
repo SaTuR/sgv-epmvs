@@ -313,9 +313,12 @@ def email_invoice(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db
     cfg=db.scalar(select(SystemSetting).limit(1))
     customer=db.get(Customer,invoice.customer_id)
     prop=db.get(Property,invoice.property_id)
-    if not cfg or not customer or not prop:
+    sale=db.get(Sale,invoice.sale_id)
+    if not cfg or not customer or not prop or not sale:
         raise HTTPException(400,"No se encontraron los datos necesarios para enviar la factura")
     try:
+        if cfg.invoice_email_attach_ride and not invoice.ride_path:
+            generate_ride(invoice,cfg,customer,prop,sale)
         send_invoice_email(invoice,cfg,customer,prop)
         audit(db,current,"EINVOICE_EMAIL_SENT","electronic_invoice",invoice.id,{"automatic":False,"to":customer.email},request)
         db.commit()
