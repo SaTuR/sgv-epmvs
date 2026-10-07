@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_permission
-from app.models import Block, Customer, Installment, Payment, ProjectStage, Property, PropertyStatus, Sale, User
+from app.models import Block, Customer, ElectronicInvoice, Installment, Payment, ProjectStage, Property, PropertyStatus, Sale, User
 
 router=APIRouter(prefix="/api/reports",tags=["Reportes"])
 
@@ -59,9 +59,17 @@ def dashboard(stage_id:uuid.UUID|None=None,db:Session=Depends(get_db),_:User=Dep
                 pending+=bal
                 if i.due_date<today: overdue+=bal
 
-    paid_props=sum(1 for p in props if p.status.code in {"PAID","AWARDED"})
-    confirmed=sum(1 for p in props if p.status.code in {"CONFIRMED","PAYING","PAID","AWARDED"})
+    paid_props=sum(1 for p in props if p.status.code in {"PAID","INVOICED","AWARDED"})
+    confirmed=sum(1 for p in props if p.status.code in {"CONFIRMED","PAYING","PAID","INVOICED","AWARDED"})
     recovery=(float(collected/committed*100) if committed>0 else 0)
+
+    invoices=db.scalars(select(ElectronicInvoice)).all()
+    invoices=[x for x in invoices if x.sale_id in sale_ids]
+    invoice_sale_ids={x.sale_id for x in invoices}
+    paid_pending_invoice=sum(1 for s in sales if s.property_id in prop_ids and db.get(Property,s.property_id).status.code=="PAID" and s.id not in invoice_sale_ids)
+    invoices_in_process=sum(1 for x in invoices if x.status in {"PENDING_CONFIG","PENDING_XML","XML_GENERATED","SIGNED","SENT"})
+    invoices_authorized=sum(1 for x in invoices if x.status=="AUTHORIZED")
+    invoices_rejected=sum(1 for x in invoices if x.status in {"REJECTED","ERROR"})
 
     monthly={}
     for p in payments:
@@ -73,7 +81,11 @@ def dashboard(stage_id:uuid.UUID|None=None,db:Session=Depends(get_db),_:User=Dep
             "reserved":status_counts.get("Reservado",0),"confirmed":confirmed,"paid":paid_props,
             "total_value":float(total_value),"committed_sales":float(committed),
             "collected":float(collected),"pending":float(pending),"overdue":float(overdue),
-            "recovery_percentage":round(recovery,2)
+            "recovery_percentage":round(recovery,2),
+            "paid_pending_invoice":paid_pending_invoice,
+            "invoices_in_process":invoices_in_process,
+            "invoices_authorized":invoices_authorized,
+            "invoices_rejected":invoices_rejected
         },
         "properties_by_status":[{"status":k,"count":v} for k,v in sorted(status_counts.items())],
         "collections_by_month":[{"month":k,"amount":float(v)} for k,v in sorted(monthly.items())[-12:]],
