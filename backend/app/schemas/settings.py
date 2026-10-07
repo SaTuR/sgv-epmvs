@@ -22,3 +22,17 @@ class BackupSettingsUpdate(BaseModel):
     backup_folder:str=Field(min_length=1,max_length=255)
     backup_time:str=Field(pattern="^(?:[01]\d|2[0-3]):[0-5]\d$")
     backup_keep_last:int=Field(default=2,ge=2,le=30)
+
+
+class SriSettingsUpdate(BaseModel):
+    sri_enabled:bool=False
+    sri_environment:str=Field(pattern="^(TEST|PRODUCTION)$")
+    sri_ruc:str=Field(min_length=13,max_length=13)
+    sri_business_name:str=Field(min_length=1,max_length=300)
+    sri_trade_name:str|None=None
+    sri_accounting_required:bool=True
+    sri_special_taxpayer_code:str|None=None
+    sri_withholding_agent_code:str|None=None
+    sri_establishment_code:str=Field(pattern="^\d{3}$")
+    sri_emission_point:str=Field(pattern="^\d{3}$")
+    sri_invoice_sequence:int=Field(ge=1,le=999999999)
