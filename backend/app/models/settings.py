@@ -46,6 +46,7 @@ class SystemSetting(Base):
     sri_tax_code:Mapped[str]=mapped_column(String(2),default="2")
     sri_tax_percentage_code:Mapped[str]=mapped_column(String(4),default="6")
     sri_tax_rate:Mapped[float]=mapped_column(Numeric(7,4),default=0)
+    sri_prices_include_tax:Mapped[bool]=mapped_column(Boolean,default=True)
     sri_payment_method_code:Mapped[str]=mapped_column(String(2),default="20")
     sri_software_provider_ruc:Mapped[str|None]=mapped_column(String(13),nullable=True)
     sri_certificate_path:Mapped[str|None]=mapped_column(String(500),nullable=True)
