@@ -7,6 +7,7 @@ from app.api.documents import router as documents_router
 from app.api.reports import router as reports_router
 from app.api.security_admin import router as security_router
 from app.api.settings import router as settings_router
+from app.api.electronic_invoices import router as electronic_invoices_router
 from app.config import settings
 from app.db import db_health
 
@@ -19,6 +20,7 @@ app.include_router(documents_router)
 app.include_router(reports_router)
 app.include_router(security_router)
 app.include_router(settings_router)
+app.include_router(electronic_invoices_router)
 
 @app.get("/api/health")
 def health():
