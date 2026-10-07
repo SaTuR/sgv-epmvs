@@ -5,9 +5,10 @@ from app.models.finance import Reservation, Sale, Installment, Payment, PaymentA
 from app.models.documents import IssuedDocument
 from app.models.audit import AuditLog
 from app.models.settings import SystemSetting
+from app.models.electronic_invoice import ElectronicInvoice
 
 __all__ = [
     "User","Role","Permission","user_roles","role_permissions","Project","ProjectStage",
     "Customer","StageMap","Block","PropertyStatus","Property","Reservation","Sale",
-    "Installment","Payment","PaymentAllocation","PropertyMapZone","IssuedDocument","AuditLog","SystemSetting",
+    "Installment","Payment","PaymentAllocation","PropertyMapZone","IssuedDocument","AuditLog","SystemSetting","ElectronicInvoice",
 ]
