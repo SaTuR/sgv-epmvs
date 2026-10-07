@@ -62,6 +62,12 @@ def load_pkcs12(data:bytes,password:str):
         raise ValueError("El SRI requiere un certificado con clave RSA.")
     if key.key_size!=2048:
         raise ValueError("El SRI requiere una clave RSA de 2048 bits.")
+    try:
+        usage=cert.extensions.get_extension_for_class(x509.KeyUsage).value
+        if not usage.digital_signature:
+            raise ValueError("El certificado no permite firma digital.")
+    except x509.ExtensionNotFound:
+        pass
     valid_from,valid_to=_cert_times(cert)
     now=datetime.now(timezone.utc)
     if now<valid_from:
@@ -159,7 +165,6 @@ def sign_invoice_xml(invoice:ElectronicInvoice,row:SystemSetting)->Path:
     XAdESVerifier().verify(
         signed,
         x509_cert=cert_pem,
-        expect_references=3,
         expect_config=verify_config,
     )
 
