@@ -39,6 +39,7 @@ class SriSettingsUpdate(BaseModel):
     sri_tax_code:str=Field(min_length=1,max_length=2)
     sri_tax_percentage_code:str=Field(min_length=1,max_length=4)
     sri_tax_rate:float=Field(ge=0,le=100)
+    sri_prices_include_tax:bool=True
     sri_payment_method_code:str=Field(min_length=2,max_length=2)
     sri_software_provider_ruc:str|None=None
 
