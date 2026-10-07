@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { Building2, Cloud, DatabaseBackup, FileText, Play, RefreshCw, Save, Settings2, SlidersHorizontal, Upload } from 'lucide-react'
+import { Building2, Cloud, DatabaseBackup, FileText, Play, ReceiptText, RefreshCw, Save, Settings2, SlidersHorizontal, Upload } from 'lucide-react'
 import { apiFetch } from '../api'
 
 const required=(label:string)=><>{label}<span className="ml-1 text-red-600">*</span></>
@@ -38,6 +38,26 @@ export default function SettingsPage(){
       setForm(data);setMessage('Configuración guardada correctamente.')
     }catch(e:any){setError(e.message||'No fue posible guardar la configuración')}
     finally{setSaving(false)}
+  }
+
+  async function saveSri(){
+    setMessage('');setError('')
+    try{
+      const data=await apiFetch('/settings/sri',{method:'PUT',body:JSON.stringify({
+        sri_enabled:Boolean(form.sri_enabled),
+        sri_environment:form.sri_environment||'TEST',
+        sri_ruc:form.sri_ruc||'',
+        sri_business_name:form.sri_business_name||'',
+        sri_trade_name:form.sri_trade_name||null,
+        sri_accounting_required:Boolean(form.sri_accounting_required),
+        sri_special_taxpayer_code:form.sri_special_taxpayer_code||null,
+        sri_withholding_agent_code:form.sri_withholding_agent_code||null,
+        sri_establishment_code:form.sri_establishment_code||'',
+        sri_emission_point:form.sri_emission_point||'',
+        sri_invoice_sequence:Number(form.sri_invoice_sequence||1),
+      })})
+      setForm(data);setMessage('Configuración SRI guardada correctamente.')
+    }catch(e:any){setError(e.message||'No fue posible guardar la configuración SRI')}
   }
 
   async function saveBackup(){
@@ -151,6 +171,28 @@ export default function SettingsPage(){
           <label><span className="text-sm font-medium text-slate-700">{required('Texto del pie de documentos')}</span><input required value={form.document_footer??''} onChange={e=>setForm({...form,document_footer:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
           <p className="text-xs text-slate-500">La URL pública se usa para construir el QR de los comprobantes, estados de cuenta y certificados.</p>
         </div>
+      </section>
+
+      <section className="rounded-2xl border bg-white p-6 shadow-sm xl:col-span-2">
+        <div className="flex items-center gap-2"><ReceiptText className="h-5 w-5 text-[#3A6C32]"/><h3 className="font-semibold">Configuración SRI</h3></div>
+        <p className="mt-1 text-sm text-slate-500">Datos usados para la facturación electrónica. La factura se crea únicamente cuando el predio queda totalmente pagado.</p>
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <label className="flex items-center gap-3 rounded-xl border p-4 text-sm font-medium">
+            <input type="checkbox" checked={Boolean(form.sri_enabled)} onChange={e=>setForm({...form,sri_enabled:e.target.checked})}/>
+            Activar facturación electrónica
+          </label>
+          <label><span className="text-sm font-medium text-slate-700">{required('Ambiente')}</span><select value={form.sri_environment||'TEST'} onChange={e=>setForm({...form,sri_environment:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option value="TEST">Pruebas</option><option value="PRODUCTION">Producción</option></select></label>
+          <label><span className="text-sm font-medium text-slate-700">{required('RUC')}</span><input maxLength={13} value={form.sri_ruc||''} onChange={e=>setForm({...form,sri_ruc:e.target.value.replace(/\D/g,'')})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+          <label className="md:col-span-2"><span className="text-sm font-medium text-slate-700">{required('Razón social')}</span><input value={form.sri_business_name||''} onChange={e=>setForm({...form,sri_business_name:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+          <label><span className="text-sm font-medium text-slate-700">Nombre comercial</span><input value={form.sri_trade_name||''} onChange={e=>setForm({...form,sri_trade_name:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+          <label><span className="text-sm font-medium text-slate-700">{required('Establecimiento')}</span><input maxLength={3} value={form.sri_establishment_code||''} onChange={e=>setForm({...form,sri_establishment_code:e.target.value.replace(/\D/g,'')})} placeholder="001" className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+          <label><span className="text-sm font-medium text-slate-700">{required('Punto de emisión')}</span><input maxLength={3} value={form.sri_emission_point||''} onChange={e=>setForm({...form,sri_emission_point:e.target.value.replace(/\D/g,'')})} placeholder="001" className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+          <label><span className="text-sm font-medium text-slate-700">{required('Próximo secuencial')}</span><input min="1" max="999999999" type="number" value={form.sri_invoice_sequence||1} onChange={e=>setForm({...form,sri_invoice_sequence:Number(e.target.value)})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+          <label className="flex items-center gap-3 rounded-xl border p-4 text-sm font-medium"><input type="checkbox" checked={Boolean(form.sri_accounting_required)} onChange={e=>setForm({...form,sri_accounting_required:e.target.checked})}/>Obligado a llevar contabilidad</label>
+          <label><span className="text-sm font-medium text-slate-700">Contribuyente especial</span><input value={form.sri_special_taxpayer_code||''} onChange={e=>setForm({...form,sri_special_taxpayer_code:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+          <label><span className="text-sm font-medium text-slate-700">Agente de retención</span><input value={form.sri_withholding_agent_code||''} onChange={e=>setForm({...form,sri_withholding_agent_code:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+        </div>
+        <div className="mt-5 flex justify-end"><button type="button" onClick={saveSri} className="rounded-xl bg-[#3A6C32] px-4 py-2.5 text-sm font-semibold text-white">Guardar configuración SRI</button></div>
       </section>
 
       <section className="rounded-2xl border bg-white p-6 shadow-sm xl:col-span-2">
