@@ -10,6 +10,8 @@ from app.services.audit import audit
 from app.services.electronic_invoice import prepare_invoice_xml
 from app.services.sri_signing import sign_invoice_xml
 from app.services.sri_client import request_authorization, save_authorization_xml, send_receipt
+from app.services.ride import generate_ride
+from app.services.invoice_email import send_invoice_email
 from app.models import SystemSetting
 
 router=APIRouter(prefix="/api/electronic-invoices",tags=["Facturación electrónica"])
@@ -99,6 +101,18 @@ def generate_xml(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db)
             "access_key":invoice.access_key,
         },request)
         db.commit();db.refresh(invoice)
+        if invoice.status=="AUTHORIZED":
+            cfg=db.scalar(select(SystemSetting).limit(1))
+            customer=db.get(Customer,invoice.customer_id)
+            prop=db.get(Property,invoice.property_id)
+            if cfg and customer and prop and cfg.invoice_email_enabled and cfg.invoice_email_send_on_authorization:
+                try:
+                    send_invoice_email(invoice,cfg,customer,prop)
+                    audit(db,current,"EINVOICE_EMAIL_SENT","electronic_invoice",invoice.id,{"automatic":True,"to":customer.email},request)
+                    db.commit()
+                except ValueError as mail_exc:
+                    audit(db,current,"EINVOICE_EMAIL_ERROR","electronic_invoice",invoice.id,{"automatic":True,"error":str(mail_exc)},request)
+                    db.commit()
     except ValueError as exc:
         db.rollback()
         raise HTTPException(400,str(exc))
@@ -212,6 +226,12 @@ def authorize_sri(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db
             invoice.authorized_at=result["authorization_date"]
             target=save_authorization_xml(invoice,result)
             invoice.authorization_xml_path=str(target) if target else None
+            customer=db.get(Customer,invoice.customer_id)
+            prop=db.get(Property,invoice.property_id)
+            sale=db.get(Sale,invoice.sale_id)
+            cfg=db.scalar(select(SystemSetting).limit(1))
+            if customer and prop and sale and cfg:
+                generate_ride(invoice,cfg,customer,prop,sale)
             invoice.error_message=None
         elif result["state"]=="NO AUTORIZADO":
             invoice.status="REJECTED"
@@ -251,3 +271,54 @@ def download_authorized_xml(invoice_id:uuid.UUID,db:Session=Depends(get_db),_:Us
         media_type="application/xml",
         filename=f"{invoice.access_key or invoice.id}_authorized.xml",
     )
+
+
+@router.get("/{invoice_id}/ride.pdf")
+def download_ride(invoice_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depends(require_permission("invoices.view"))):
+    invoice=db.get(ElectronicInvoice,invoice_id)
+    if not invoice:
+        raise HTTPException(404,"Factura electrónica no encontrada")
+    if not invoice.ride_path:
+        raise HTTPException(404,"La factura todavía no tiene RIDE generado")
+    return FileResponse(invoice.ride_path,media_type="application/pdf",filename=f"RIDE_{invoice.document_number or invoice.id}.pdf")
+
+
+@router.post("/{invoice_id}/generate-ride")
+def regenerate_ride(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("invoices.view"))):
+    invoice=db.get(ElectronicInvoice,invoice_id)
+    if not invoice:
+        raise HTTPException(404,"Factura electrónica no encontrada")
+    cfg=db.scalar(select(SystemSetting).limit(1))
+    customer=db.get(Customer,invoice.customer_id)
+    prop=db.get(Property,invoice.property_id)
+    sale=db.get(Sale,invoice.sale_id)
+    if not cfg or not customer or not prop or not sale:
+        raise HTTPException(400,"No se encontraron los datos necesarios para generar el RIDE")
+    try:
+        generate_ride(invoice,cfg,customer,prop,sale)
+        audit(db,current,"EINVOICE_RIDE_GENERATED","electronic_invoice",invoice.id,{"document_number":invoice.document_number},request)
+        db.commit();db.refresh(invoice)
+    except ValueError as exc:
+        db.rollback();raise HTTPException(400,str(exc))
+    return {"ok":True,"ride":True}
+
+
+@router.post("/{invoice_id}/email")
+def email_invoice(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("invoices.view"))):
+    invoice=db.get(ElectronicInvoice,invoice_id)
+    if not invoice:
+        raise HTTPException(404,"Factura electrónica no encontrada")
+    if invoice.status!="AUTHORIZED":
+        raise HTTPException(409,"Solo se puede enviar por correo una factura autorizada")
+    cfg=db.scalar(select(SystemSetting).limit(1))
+    customer=db.get(Customer,invoice.customer_id)
+    prop=db.get(Property,invoice.property_id)
+    if not cfg or not customer or not prop:
+        raise HTTPException(400,"No se encontraron los datos necesarios para enviar la factura")
+    try:
+        send_invoice_email(invoice,cfg,customer,prop)
+        audit(db,current,"EINVOICE_EMAIL_SENT","electronic_invoice",invoice.id,{"automatic":False,"to":customer.email},request)
+        db.commit()
+    except ValueError as exc:
+        db.rollback();raise HTTPException(400,str(exc))
+    return {"ok":True,"message":"Factura enviada por correo correctamente"}
