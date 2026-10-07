@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, FileText, RefreshCw } from 'lucide-react'
+import { Download, FileText, RefreshCw, ShieldCheck } from 'lucide-react'
 import { apiDownload, apiFetch } from '../api'
 
 export default function ElectronicInvoicesPage(){
@@ -33,8 +33,25 @@ export default function ElectronicInvoicesPage(){
     finally{setAction('')}
   }
 
+  async function signXml(id:string){
+    setAction(id);setError('')
+    try{
+      await apiFetch('/electronic-invoices/'+id+'/sign',{method:'POST'})
+      await load()
+    }catch(e:any){setError(e.message||'No fue posible firmar el XML')}
+    finally{setAction('')}
+  }
+
+  async function downloadSignedXml(id:string){
+    setAction(id);setError('')
+    try{await apiDownload('/electronic-invoices/'+id+'/signed-xml','factura_firmada.xml')}
+    catch(e:any){setError(e.message||'No fue posible descargar el XML firmado')}
+    finally{setAction('')}
+  }
+
   function badge(status:string){
     if(status==='AUTHORIZED')return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    if(status==='SIGNED')return 'border-blue-200 bg-blue-50 text-blue-700'
     if(status==='REJECTED'||status==='ERROR')return 'border-red-200 bg-red-50 text-red-700'
     if(status==='PENDING_CONFIG')return 'border-slate-200 bg-slate-50 text-slate-600'
     return 'border-amber-200 bg-amber-50 text-amber-700'
@@ -74,7 +91,9 @@ export default function ElectronicInvoicesPage(){
             <td className="px-4 py-3"><span className={'inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold '+badge(r.status)}>{r.status_label}</span></td>
             <td className="px-4 py-3"><div className="flex flex-wrap gap-2">
               {['PENDING_CONFIG','PENDING_XML','XML_GENERATED','ERROR'].includes(r.status)&&<button type="button" disabled={action===r.id} onClick={()=>generateXml(r.id)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"><RefreshCw className="h-3.5 w-3.5"/>{r.status==='XML_GENERATED'?'Regenerar XML':'Generar XML'}</button>}
-              {r.status==='XML_GENERATED'&&<button type="button" disabled={action===r.id} onClick={()=>downloadXml(r.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#3A6C32] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><Download className="h-3.5 w-3.5"/>Descargar XML</button>}
+              {r.status==='XML_GENERATED'&&<button type="button" disabled={action===r.id} onClick={()=>downloadXml(r.id)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"><Download className="h-3.5 w-3.5"/>XML</button>}
+              {r.status==='XML_GENERATED'&&<button type="button" disabled={action===r.id} onClick={()=>signXml(r.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#3A6C32] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><ShieldCheck className="h-3.5 w-3.5"/>Firmar XML</button>}
+              {r.status==='SIGNED'&&<button type="button" disabled={action===r.id} onClick={()=>downloadSignedXml(r.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#3A6C32] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><Download className="h-3.5 w-3.5"/>XML firmado</button>}
             </div></td>
           </tr>)}</tbody>
         </table>
