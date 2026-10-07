@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Building2, CircleDollarSign, Landmark, MapPinned, TrendingUp, WalletCards } from 'lucide-react'
+import { AlertTriangle, Building2, CircleDollarSign, FileCheck2, FileClock, Landmark, MapPinned, ReceiptText, TrendingUp, WalletCards } from 'lucide-react'
 import { apiFetch } from '../api'
 import { propertyStatusBarClass } from '../utils/statusStyles'
 
@@ -30,6 +30,10 @@ export default function DashboardPage(){
     ['Cartera pendiente',money(t.pending),Landmark],
     ['Cartera vencida',money(t.overdue),WalletCards],
     ['Recuperación',t.recovery_percentage.toFixed(2)+' %',TrendingUp],
+    ['Pagados por facturar',String(t.paid_pending_invoice||0),ReceiptText],
+    ['Facturas en proceso',String(t.invoices_in_process||0),FileClock],
+    ['Facturas autorizadas',String(t.invoices_authorized||0),FileCheck2],
+    ['Facturas rechazadas',String(t.invoices_rejected||0),AlertTriangle],
   ] as const
 
   return <div>
@@ -50,6 +54,11 @@ export default function DashboardPage(){
       <section className="rounded-2xl border bg-white p-6 shadow-sm"><div><h3 className="font-semibold text-slate-900">Recaudación mensual</h3><p className="mt-1 text-sm text-slate-500">Últimos meses con movimientos registrados.</p></div>
         <div className="mt-6 space-y-4">{data.collections_by_month.map((x:any)=><div key={x.month}><div className="mb-1 flex justify-between text-sm"><span>{x.month}</span><span className="font-semibold">{money(x.amount)}</span></div><div className="h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-[#FAB71C]" style={{width:(x.amount/maxMonth*100)+'%'}}/></div></div>)}{!data.collections_by_month.length&&<p className="py-10 text-center text-sm text-slate-400">Aún no hay pagos registrados.</p>}</div>
       </section>
+    </div>
+
+    <div className="mt-6 rounded-2xl border bg-white p-6 shadow-sm">
+      <div className="flex items-center justify-between"><div><h3 className="font-semibold text-slate-900">Pagados pendientes de facturación</h3><p className="mt-1 text-sm text-slate-500">Predios completamente pagados que aún no tienen factura electrónica creada.</p></div><span className="text-sm font-semibold text-[#3A6C32]">{data.paid_pending_invoices?.length||0}</span></div>
+      <div className="mt-4 overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">Predio</th><th className="px-4 py-3">Cliente</th><th className="px-4 py-3 text-right">Valor</th></tr></thead><tbody>{(data.paid_pending_invoices||[]).map((x:any)=><tr key={x.sale_id} className="border-t"><td className="px-4 py-3 font-medium">{x.property}</td><td className="px-4 py-3">{x.customer}</td><td className="px-4 py-3 text-right">{money(x.sale_price)}</td></tr>)}</tbody></table>{!(data.paid_pending_invoices||[]).length&&<p className="py-8 text-center text-sm text-slate-400">No hay predios pendientes de facturación.</p>}</div>
     </div>
 
     <div className="mt-5 rounded-2xl border bg-white p-6 shadow-sm">
