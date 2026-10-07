@@ -8,6 +8,8 @@ from app.api.deps import get_db, require_permission
 from app.models import Customer, ElectronicInvoice, Property, Sale, User
 from app.services.audit import audit
 from app.services.electronic_invoice import prepare_invoice_xml
+from app.services.sri_signing import sign_invoice_xml
+from app.models import SystemSetting
 
 router=APIRouter(prefix="/api/electronic-invoices",tags=["Facturación electrónica"])
 
@@ -70,6 +72,7 @@ def invoice_detail(invoice_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depend
         "authorization_number":x.authorization_number,
         "authorized_at":x.authorized_at,
         "xml_path":x.xml_path,
+        "signed_xml_path":x.signed_xml_path,
         "ride_path":x.ride_path,
         "error_message":x.error_message,
     }
@@ -113,4 +116,46 @@ def download_xml(invoice_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depends(
         invoice.xml_path,
         media_type="application/xml",
         filename=f"{invoice.access_key or invoice.id}.xml",
+    )
+
+
+@router.post("/{invoice_id}/sign")
+def sign_xml(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("invoices.view"))):
+    invoice=db.get(ElectronicInvoice,invoice_id)
+    if not invoice:
+        raise HTTPException(404,"Factura electrónica no encontrada")
+    cfg=db.scalar(select(SystemSetting).limit(1))
+    if not cfg:
+        raise HTTPException(400,"Configuración SRI no encontrada")
+    try:
+        sign_invoice_xml(invoice,cfg)
+        audit(db,current,"EINVOICE_SIGNED","electronic_invoice",invoice.id,{
+            "sale_id":invoice.sale_id,
+            "document_number":invoice.document_number,
+            "access_key":invoice.access_key,
+        },request)
+        db.commit();db.refresh(invoice)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(400,str(exc))
+    return {
+        "id":str(invoice.id),
+        "status":invoice.status,
+        "status_label":STATUS_LABELS.get(invoice.status,invoice.status),
+        "document_number":invoice.document_number,
+        "access_key":invoice.access_key,
+    }
+
+
+@router.get("/{invoice_id}/signed-xml")
+def download_signed_xml(invoice_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depends(require_permission("invoices.view"))):
+    invoice=db.get(ElectronicInvoice,invoice_id)
+    if not invoice:
+        raise HTTPException(404,"Factura electrónica no encontrada")
+    if not invoice.signed_xml_path:
+        raise HTTPException(404,"La factura todavía no tiene XML firmado")
+    return FileResponse(
+        invoice.signed_xml_path,
+        media_type="application/xml",
+        filename=f"{invoice.access_key or invoice.id}_signed.xml",
     )
