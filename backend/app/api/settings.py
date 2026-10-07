@@ -56,6 +56,11 @@ def serialize(row:SystemSetting):
         "sri_establishment_code":row.sri_establishment_code,
         "sri_emission_point":row.sri_emission_point,
         "sri_invoice_sequence":row.sri_invoice_sequence,
+        "sri_tax_code":row.sri_tax_code,
+        "sri_tax_percentage_code":row.sri_tax_percentage_code,
+        "sri_tax_rate":float(row.sri_tax_rate or 0),
+        "sri_payment_method_code":row.sri_payment_method_code,
+        "sri_software_provider_ruc":row.sri_software_provider_ruc,
         "sri_certificate_configured":certificate_ready(row),
         "sri_certificate_subject":row.sri_certificate_subject,
         "sri_certificate_issuer":row.sri_certificate_issuer,
@@ -205,6 +210,11 @@ def update_sri_settings(payload:SriSettingsUpdate,request:Request,db:Session=Dep
         "sri_establishment_code":row.sri_establishment_code,
         "sri_emission_point":row.sri_emission_point,
         "sri_invoice_sequence":row.sri_invoice_sequence,
+        "sri_tax_code":row.sri_tax_code,
+        "sri_tax_percentage_code":row.sri_tax_percentage_code,
+        "sri_tax_rate":float(row.sri_tax_rate or 0),
+        "sri_payment_method_code":row.sri_payment_method_code,
+        "sri_software_provider_ruc":row.sri_software_provider_ruc,
     }
     for k,v in payload.model_dump().items():
         setattr(row,k,v)
@@ -277,7 +287,7 @@ async def upload_ride_logo(request:Request,file:UploadFile=File(...),db:Session=
 
 
 @router.put("/invoice-email")
-def update_invoice_email_settings(payload:InvoiceEmailSettingsUpdate,request:Request,password:str|None=None,db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
+def update_invoice_email_settings(payload:InvoiceEmailSettingsUpdate,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
     row=get_settings(db)
     old={k:getattr(row,k) for k in payload.model_fields.keys()}
     for k,v in payload.model_dump().items():
