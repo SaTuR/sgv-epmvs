@@ -1,5 +1,5 @@
 from pathlib import Path
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, require_permission
@@ -8,6 +8,7 @@ from app.models import SystemSetting, User
 from app.schemas.settings import BackupSettingsUpdate, SriSettingsUpdate, SystemSettingsUpdate
 from app.services.audit import audit
 from app.services.backup import RCLONE_CONFIG, rclone_config_present, test_remote
+from app.services.sri_signing import certificate_ready, install_certificate
 
 router=APIRouter(prefix="/api/settings",tags=["Configuración"])
 
@@ -55,6 +56,12 @@ def serialize(row:SystemSetting):
         "sri_establishment_code":row.sri_establishment_code,
         "sri_emission_point":row.sri_emission_point,
         "sri_invoice_sequence":row.sri_invoice_sequence,
+        "sri_certificate_configured":certificate_ready(row),
+        "sri_certificate_subject":row.sri_certificate_subject,
+        "sri_certificate_issuer":row.sri_certificate_issuer,
+        "sri_certificate_serial":row.sri_certificate_serial,
+        "sri_certificate_valid_from":row.sri_certificate_valid_from,
+        "sri_certificate_valid_to":row.sri_certificate_valid_to,
         "updated_at":row.updated_at,
     }
 
@@ -174,5 +181,38 @@ def update_sri_settings(payload:SriSettingsUpdate,request:Request,db:Session=Dep
     for k,v in payload.model_dump().items():
         setattr(row,k,v)
     audit(db,current,"SRI_SETTINGS_UPDATE","system_settings",row.id,{"old":old,"new":payload.model_dump()},request)
+    db.commit();db.refresh(row)
+    return serialize(row)
+
+
+@router.post("/sri/certificate")
+async def upload_sri_certificate(
+    request:Request,
+    password:str=Form(...),
+    file:UploadFile=File(...),
+    db:Session=Depends(get_db),
+    current:User=Depends(require_permission("system.admin")),
+):
+    filename=(file.filename or "").lower()
+    if not (filename.endswith(".p12") or filename.endswith(".pfx")):
+        raise HTTPException(400,"El certificado debe ser un archivo .p12 o .pfx")
+    data=await file.read()
+    if not data or len(data)>5*1024*1024:
+        raise HTTPException(400,"El certificado está vacío o supera 5 MB")
+    if not password:
+        raise HTTPException(400,"Debe ingresar la contraseña del certificado")
+    row=get_settings(db)
+    try:
+        info=install_certificate(data,password,row)
+    except ValueError as exc:
+        raise HTTPException(400,str(exc))
+    audit(db,current,"SRI_CERTIFICATE_UPLOAD","system_settings",row.id,{
+        "filename":file.filename,
+        "subject":info["subject"],
+        "issuer":info["issuer"],
+        "serial":info["serial"],
+        "valid_from":str(info["valid_from"]),
+        "valid_to":str(info["valid_to"]),
+    },request)
     db.commit();db.refresh(row)
     return serialize(row)
