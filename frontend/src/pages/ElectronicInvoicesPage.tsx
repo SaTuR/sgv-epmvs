@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Download, FileText, RefreshCw, Send, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, Download, FileText, Mail, RefreshCw, Send, ShieldCheck } from 'lucide-react'
 import { apiDownload, apiFetch } from '../api'
 
 export default function ElectronicInvoicesPage(){
@@ -74,6 +74,21 @@ export default function ElectronicInvoicesPage(){
     finally{setAction('')}
   }
 
+  async function downloadRide(id:string){
+    setAction(id);setError('')
+    try{await apiDownload('/electronic-invoices/'+id+'/ride.pdf','RIDE.pdf')}
+    catch(e:any){setError(e.message||'No fue posible descargar el RIDE')}
+    finally{setAction('')}
+  }
+
+  async function emailInvoice(id:string){
+    setAction(id);setError('')
+    try{
+      await apiFetch('/electronic-invoices/'+id+'/email',{method:'POST'})
+    }catch(e:any){setError(e.message||'No fue posible enviar la factura por correo')}
+    finally{setAction('')}
+  }
+
   function badge(status:string){
     if(status==='AUTHORIZED')return 'border-emerald-200 bg-emerald-50 text-emerald-700'
     if(status==='SENT')return 'border-cyan-200 bg-cyan-50 text-cyan-700'
@@ -122,7 +137,9 @@ export default function ElectronicInvoicesPage(){
               {r.status==='SIGNED'&&<button type="button" disabled={action===r.id} onClick={()=>downloadSignedXml(r.id)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"><Download className="h-3.5 w-3.5"/>XML firmado</button>}
               {r.status==='SIGNED'&&<button type="button" disabled={action===r.id} onClick={()=>sendSri(r.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#3A6C32] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><Send className="h-3.5 w-3.5"/>Enviar SRI</button>}
               {r.status==='SENT'&&<button type="button" disabled={action===r.id} onClick={()=>authorizeSri(r.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#3A6C32] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><CheckCircle2 className="h-3.5 w-3.5"/>Consultar autorización</button>}
-              {r.status==='AUTHORIZED'&&<button type="button" disabled={action===r.id} onClick={()=>downloadAuthorizedXml(r.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#3A6C32] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><Download className="h-3.5 w-3.5"/>XML autorizado</button>}
+              {r.status==='AUTHORIZED'&&<button type="button" disabled={action===r.id} onClick={()=>downloadAuthorizedXml(r.id)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"><Download className="h-3.5 w-3.5"/>XML autorizado</button>}
+              {r.status==='AUTHORIZED'&&<button type="button" disabled={action===r.id} onClick={()=>downloadRide(r.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#3A6C32] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><FileText className="h-3.5 w-3.5"/>RIDE</button>}
+              {r.status==='AUTHORIZED'&&<button type="button" disabled={action===r.id} onClick={()=>emailInvoice(r.id)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"><Mail className="h-3.5 w-3.5"/>Enviar correo</button>}
             </div></td>
           </tr>)}</tbody>
         </table>
