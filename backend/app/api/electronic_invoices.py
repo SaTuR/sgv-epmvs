@@ -242,33 +242,33 @@ def authorize_sri(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db
     invoice=db.get(ElectronicInvoice,invoice_id)
     if not invoice:
         raise HTTPException(404,"Factura electrónica no encontrada")
+
     try:
         result=request_authorization(invoice)
         invoice.sri_authorization_response=result["raw"]
+
         if result["state"]=="AUTORIZADO":
             invoice.status="AUTHORIZED"
             invoice.authorization_number=result["authorization_number"]
             invoice.authorized_at=result["authorization_date"]
             target=save_authorization_xml(invoice,result)
             invoice.authorization_xml_path=str(target) if target else None
-            customer=db.get(Customer,invoice.customer_id)
+
             prop=db.get(Property,invoice.property_id)
-            sale=db.get(Sale,invoice.sale_id)
-            cfg=db.scalar(select(SystemSetting).limit(1))
-            if customer and prop and sale and cfg:
-                generate_ride(invoice,cfg,customer,prop,sale)
+            invoiced_status=db.scalar(select(PropertyStatus).where(PropertyStatus.code=="INVOICED"))
+            if not invoiced_status:
+                raise ValueError("Estado de predio FACTURADO no configurado")
             if prop:
-                invoiced_status=db.scalar(select(PropertyStatus).where(PropertyStatus.code=="INVOICED"))
-                if not invoiced_status:
-                    raise ValueError("Estado de predio FACTURADO no configurado")
                 prop.status_id=invoiced_status.id
             invoice.error_message=None
+
         elif result["state"]=="NO AUTORIZADO":
             invoice.status="REJECTED"
             invoice.error_message=" | ".join(result["messages"]) or "El SRI no autorizó el comprobante."
         else:
             invoice.status="SENT"
             invoice.error_message=" | ".join(result["messages"]) or "Autorización aún no disponible."
+
         audit(db,current,"EINVOICE_SRI_AUTHORIZATION","electronic_invoice",invoice.id,{
             "state":result["state"],
             "authorization_number":result["authorization_number"],
@@ -276,21 +276,37 @@ def authorize_sri(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db
             "access_key":invoice.access_key,
         },request)
         db.commit();db.refresh(invoice)
-        if invoice.status=="AUTHORIZED":
-            cfg=db.scalar(select(SystemSetting).limit(1))
-            customer=db.get(Customer,invoice.customer_id)
-            prop=db.get(Property,invoice.property_id)
-            if cfg and customer and prop and cfg.invoice_email_enabled and cfg.invoice_email_send_on_authorization:
-                try:
-                    send_invoice_email(invoice,cfg,customer,prop)
-                    audit(db,current,"EINVOICE_EMAIL_SENT","electronic_invoice",invoice.id,{"automatic":True,"to":customer.email},request)
-                    db.commit()
-                except ValueError as mail_exc:
-                    audit(db,current,"EINVOICE_EMAIL_ERROR","electronic_invoice",invoice.id,{"automatic":True,"error":str(mail_exc)},request)
-                    db.commit()
+
     except ValueError as exc:
         db.rollback()
         raise HTTPException(400,str(exc))
+
+    if invoice.status=="AUTHORIZED":
+        cfg=db.scalar(select(SystemSetting).limit(1))
+        customer=db.get(Customer,invoice.customer_id)
+        prop=db.get(Property,invoice.property_id)
+        sale=db.get(Sale,invoice.sale_id)
+
+        if cfg and customer and prop and sale:
+            try:
+                generate_ride(invoice,cfg,customer,prop,sale)
+                audit(db,current,"EINVOICE_RIDE_GENERATED","electronic_invoice",invoice.id,{"automatic":True},request)
+                db.commit()
+            except Exception as ride_exc:
+                db.rollback()
+                audit(db,current,"EINVOICE_RIDE_ERROR","electronic_invoice",invoice.id,{"automatic":True,"error":str(ride_exc)},request)
+                db.commit()
+
+        if cfg and customer and prop and cfg.invoice_email_enabled and cfg.invoice_email_send_on_authorization:
+            try:
+                send_invoice_email(invoice,cfg,customer,prop)
+                audit(db,current,"EINVOICE_EMAIL_SENT","electronic_invoice",invoice.id,{"automatic":True,"to":customer.email},request)
+                db.commit()
+            except Exception as mail_exc:
+                db.rollback()
+                audit(db,current,"EINVOICE_EMAIL_ERROR","electronic_invoice",invoice.id,{"automatic":True,"error":str(mail_exc)},request)
+                db.commit()
+
     return {
         "id":str(invoice.id),
         "status":invoice.status,
@@ -299,7 +315,6 @@ def authorize_sri(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db
         "authorized_at":invoice.authorized_at,
         "error_message":invoice.error_message,
     }
-
 
 @router.get("/{invoice_id}/authorized-xml")
 def download_authorized_xml(invoice_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depends(require_permission("invoices.view"))):
