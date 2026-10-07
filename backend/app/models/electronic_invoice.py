@@ -25,6 +25,7 @@ class ElectronicInvoice(Base):
     authorization_number:Mapped[str|None]=mapped_column(String(80),nullable=True)
     authorized_at:Mapped[datetime|None]=mapped_column(DateTime(timezone=True),nullable=True)
     xml_path:Mapped[str|None]=mapped_column(String(500),nullable=True)
+    signed_xml_path:Mapped[str|None]=mapped_column(String(500),nullable=True)
     ride_path:Mapped[str|None]=mapped_column(String(500),nullable=True)
     error_message:Mapped[str|None]=mapped_column(Text,nullable=True)
     created_at:Mapped[datetime]=mapped_column(DateTime(timezone=True),default=datetime.utcnow)
