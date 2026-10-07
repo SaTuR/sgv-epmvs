@@ -101,18 +101,6 @@ def generate_xml(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db)
             "access_key":invoice.access_key,
         },request)
         db.commit();db.refresh(invoice)
-        if invoice.status=="AUTHORIZED":
-            cfg=db.scalar(select(SystemSetting).limit(1))
-            customer=db.get(Customer,invoice.customer_id)
-            prop=db.get(Property,invoice.property_id)
-            if cfg and customer and prop and cfg.invoice_email_enabled and cfg.invoice_email_send_on_authorization:
-                try:
-                    send_invoice_email(invoice,cfg,customer,prop)
-                    audit(db,current,"EINVOICE_EMAIL_SENT","electronic_invoice",invoice.id,{"automatic":True,"to":customer.email},request)
-                    db.commit()
-                except ValueError as mail_exc:
-                    audit(db,current,"EINVOICE_EMAIL_ERROR","electronic_invoice",invoice.id,{"automatic":True,"error":str(mail_exc)},request)
-                    db.commit()
     except ValueError as exc:
         db.rollback()
         raise HTTPException(400,str(exc))
@@ -246,6 +234,18 @@ def authorize_sri(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db
             "access_key":invoice.access_key,
         },request)
         db.commit();db.refresh(invoice)
+        if invoice.status=="AUTHORIZED":
+            cfg=db.scalar(select(SystemSetting).limit(1))
+            customer=db.get(Customer,invoice.customer_id)
+            prop=db.get(Property,invoice.property_id)
+            if cfg and customer and prop and cfg.invoice_email_enabled and cfg.invoice_email_send_on_authorization:
+                try:
+                    send_invoice_email(invoice,cfg,customer,prop)
+                    audit(db,current,"EINVOICE_EMAIL_SENT","electronic_invoice",invoice.id,{"automatic":True,"to":customer.email},request)
+                    db.commit()
+                except ValueError as mail_exc:
+                    audit(db,current,"EINVOICE_EMAIL_ERROR","electronic_invoice",invoice.id,{"automatic":True,"error":str(mail_exc)},request)
+                    db.commit()
     except ValueError as exc:
         db.rollback()
         raise HTTPException(400,str(exc))
