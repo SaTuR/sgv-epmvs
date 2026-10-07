@@ -23,7 +23,10 @@ CERT_PATH=CERT_DIR/"firma_electronica.p12"
 
 
 def _fernet()->Fernet:
-    raw=hashlib.sha256(app_settings.secret_key.encode("utf-8")).digest()
+    secret=app_settings.secret_key.strip()
+    if not secret or secret=="CAMBIAR_SECRET_KEY" or len(secret)<32:
+        raise ValueError("SECRET_KEY debe configurarse con al menos 32 caracteres antes de guardar la firma electrónica.")
+    raw=hashlib.sha256(secret.encode("utf-8")).digest()
     return Fernet(base64.urlsafe_b64encode(raw))
 
 
