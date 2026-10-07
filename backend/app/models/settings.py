@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
@@ -45,7 +45,7 @@ class SystemSetting(Base):
     sri_invoice_sequence:Mapped[int]=mapped_column(Integer,default=1)
     sri_tax_code:Mapped[str]=mapped_column(String(2),default="2")
     sri_tax_percentage_code:Mapped[str]=mapped_column(String(4),default="6")
-    sri_tax_rate:Mapped[float]=mapped_column(default=0)
+    sri_tax_rate:Mapped[float]=mapped_column(Numeric(7,4),default=0)
     sri_payment_method_code:Mapped[str]=mapped_column(String(2),default="20")
     sri_software_provider_ruc:Mapped[str|None]=mapped_column(String(13),nullable=True)
     sri_certificate_path:Mapped[str|None]=mapped_column(String(500),nullable=True)
