@@ -479,6 +479,7 @@ def test_xades_signing_uses_isolated_pkcs12(tmp_path,monkeypatch):
     cert_path=cert_dir/"firma_electronica.p12"
     monkeypatch.setattr(sri_signing,"CERT_DIR",cert_dir)
     monkeypatch.setattr(sri_signing,"CERT_PATH",cert_path)
+    monkeypatch.setattr(sri_signing.app_settings,"secret_key","qa-secret-key-0123456789-0123456789")
 
     cfg=SystemSetting()
     sri_signing.install_certificate(bundle,password,cfg)
