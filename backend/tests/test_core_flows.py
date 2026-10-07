@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 
 from app.db import SessionLocal
-from app.models import Installment, Permission, Property, Role, Sale
+from app.models import ElectronicInvoice, Installment, Permission, Property, Role, Sale
 from tests.conftest import create_customer_and_property, create_user_with_permissions, login_headers
 
 
@@ -298,3 +298,63 @@ def test_backup_settings_are_admin_only_and_keep_two(client,admin_headers):
 
     payload["backup_enabled"]=False
     client.put("/api/settings/backup",json=payload,headers=admin_headers)
+
+
+def test_einvoice_created_only_when_sale_is_fully_paid(client,admin_headers):
+    customer_id,property_id=create_customer_and_property()
+    sale=client.post("/api/sales",json={
+        "customer_id":customer_id,
+        "property_id":property_id,
+        "sale_price":10000,
+        "down_payment":1000,
+        "installment_count":9,
+        "frequency":"MONTHLY",
+        "first_due_date":str(date.today()+timedelta(days=30)),
+    },headers=admin_headers)
+    assert sale.status_code==200, sale.text
+    sale_id=sale.json()["id"]
+
+    db=SessionLocal()
+    try:
+        invoice=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==uuid.UUID(sale_id)))
+        assert invoice is None
+    finally:
+        db.close()
+
+    payment=client.post("/api/payments",json={
+        "sale_id":sale_id,
+        "payment_date":str(date.today()),
+        "amount":9000,
+        "payment_method":"TRANSFERENCIA",
+    },headers=admin_headers)
+    assert payment.status_code==200, payment.text
+
+    db=SessionLocal()
+    try:
+        invoices=db.scalars(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==uuid.UUID(sale_id))).all()
+        assert len(invoices)==1
+        assert float(invoices[0].total)==10000
+    finally:
+        db.close()
+
+
+def test_einvoice_is_idempotent_for_fully_paid_sale(client,admin_headers):
+    customer_id,property_id=create_customer_and_property()
+    sale=client.post("/api/sales",json={
+        "customer_id":customer_id,
+        "property_id":property_id,
+        "sale_price":5000,
+        "down_payment":5000,
+        "installment_count":12,
+        "frequency":"MONTHLY",
+        "first_due_date":str(date.today()+timedelta(days=30)),
+    },headers=admin_headers)
+    assert sale.status_code==200, sale.text
+    sale_id=sale.json()["id"]
+
+    db=SessionLocal()
+    try:
+        invoices=db.scalars(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==uuid.UUID(sale_id))).all()
+        assert len(invoices)==1
+    finally:
+        db.close()
