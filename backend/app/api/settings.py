@@ -5,10 +5,10 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, require_permission
 from app.config import settings
 from app.models import SystemSetting, User
-from app.schemas.settings import BackupSettingsUpdate, SriSettingsUpdate, SystemSettingsUpdate
+from app.schemas.settings import BackupSettingsUpdate, InvoiceEmailSettingsUpdate, RideSettingsUpdate, SriSettingsUpdate, SystemSettingsUpdate
 from app.services.audit import audit
 from app.services.backup import RCLONE_CONFIG, rclone_config_present, test_remote
-from app.services.sri_signing import certificate_ready, install_certificate
+from app.services.sri_signing import certificate_ready, encrypt_secret, install_certificate
 
 router=APIRouter(prefix="/api/settings",tags=["Configuración"])
 
@@ -62,6 +62,34 @@ def serialize(row:SystemSetting):
         "sri_certificate_serial":row.sri_certificate_serial,
         "sri_certificate_valid_from":row.sri_certificate_valid_from,
         "sri_certificate_valid_to":row.sri_certificate_valid_to,
+        "ride_title":row.ride_title,
+        "ride_subtitle":row.ride_subtitle,
+        "ride_footer":row.ride_footer,
+        "ride_additional_text":row.ride_additional_text,
+        "ride_page_size":row.ride_page_size,
+        "ride_show_logo":row.ride_show_logo,
+        "ride_logo_configured":bool(row.ride_logo_path and Path(row.ride_logo_path).is_file()),
+        "ride_show_qr":row.ride_show_qr,
+        "ride_qr_size_mm":row.ride_qr_size_mm,
+        "ride_qr_content_template":row.ride_qr_content_template,
+        "ride_primary_hex":row.ride_primary_hex,
+        "invoice_email_enabled":row.invoice_email_enabled,
+        "invoice_email_send_on_authorization":row.invoice_email_send_on_authorization,
+        "smtp_host":row.smtp_host,
+        "smtp_port":row.smtp_port,
+        "smtp_security":row.smtp_security,
+        "smtp_username":row.smtp_username,
+        "smtp_password_configured":bool(row.smtp_password_encrypted),
+        "smtp_sender_email":row.smtp_sender_email,
+        "smtp_sender_name":row.smtp_sender_name,
+        "invoice_email_subject_template":row.invoice_email_subject_template,
+        "invoice_email_body_template":row.invoice_email_body_template,
+        "invoice_email_attach_ride":row.invoice_email_attach_ride,
+        "invoice_email_attach_xml":row.invoice_email_attach_xml,
+        "invoice_email_cc":row.invoice_email_cc,
+        "invoice_email_bcc":row.invoice_email_bcc,
+        "invoice_email_retries":row.invoice_email_retries,
+        "invoice_email_timeout_seconds":row.invoice_email_timeout_seconds,
         "updated_at":row.updated_at,
     }
 
@@ -214,5 +242,57 @@ async def upload_sri_certificate(
         "valid_from":str(info["valid_from"]),
         "valid_to":str(info["valid_to"]),
     },request)
+    db.commit();db.refresh(row)
+    return serialize(row)
+
+
+@router.put("/ride")
+def update_ride_settings(payload:RideSettingsUpdate,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
+    row=get_settings(db)
+    old={k:getattr(row,k) for k in payload.model_fields.keys()}
+    for k,v in payload.model_dump().items():
+        setattr(row,k,v)
+    audit(db,current,"RIDE_SETTINGS_UPDATE","system_settings",row.id,{"old":old,"new":payload.model_dump()},request)
+    db.commit();db.refresh(row)
+    return serialize(row)
+
+
+@router.post("/ride/logo")
+async def upload_ride_logo(request:Request,file:UploadFile=File(...),db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
+    filename=(file.filename or "").lower()
+    if not filename.endswith((".png",".jpg",".jpeg",".webp")):
+        raise HTTPException(400,"El logo debe ser PNG, JPG, JPEG o WEBP")
+    data=await file.read()
+    if not data or len(data)>5*1024*1024:
+        raise HTTPException(400,"El logo está vacío o supera 5 MB")
+    suffix=Path(filename).suffix or ".png"
+    logo_dir=Path(settings.upload_path)/"branding"
+    logo_dir.mkdir(parents=True,exist_ok=True)
+    path=logo_dir/f"ride-logo{suffix}"
+    path.write_bytes(data);path.chmod(0o600)
+    row=get_settings(db);row.ride_logo_path=str(path)
+    audit(db,current,"RIDE_LOGO_UPLOAD","system_settings",row.id,{"filename":file.filename},request)
+    db.commit();db.refresh(row)
+    return serialize(row)
+
+
+@router.put("/invoice-email")
+def update_invoice_email_settings(payload:InvoiceEmailSettingsUpdate,request:Request,password:str|None=None,db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
+    row=get_settings(db)
+    old={k:getattr(row,k) for k in payload.model_fields.keys()}
+    for k,v in payload.model_dump().items():
+        setattr(row,k,v)
+    audit(db,current,"INVOICE_EMAIL_SETTINGS_UPDATE","system_settings",row.id,{"old":old,"new":payload.model_dump()},request)
+    db.commit();db.refresh(row)
+    return serialize(row)
+
+
+@router.post("/invoice-email/password")
+def update_invoice_email_password(request:Request,password:str=Form(...),db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
+    if not password:
+        raise HTTPException(400,"Debe ingresar la contraseña SMTP")
+    row=get_settings(db)
+    row.smtp_password_encrypted=encrypt_secret(password)
+    audit(db,current,"SMTP_PASSWORD_UPDATE","system_settings",row.id,{},request)
     db.commit();db.refresh(row)
     return serialize(row)
