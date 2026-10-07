@@ -9,7 +9,6 @@ from app.api.deps import get_current_user, get_db, require_permission
 from app.models import Customer, Installment, Payment, PaymentAllocation, Property, PropertyStatus, Reservation, Sale, User
 from app.schemas.finance import PaymentCreate, ReservationCreate, SaleCreate
 from app.services.audit import audit
-from app.services.electronic_invoice import ensure_invoice_for_paid_sale
 
 router=APIRouter(prefix="/api",tags=["Ventas y cartera"])
 
@@ -63,10 +62,17 @@ def sales(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
         paid=s.down_payment+installment_paid
         total=sum((i.amount for i in s.installments),Decimal("0"))
         overdue=sum((i.amount-i.paid_amount for i in s.installments if i.due_date<date.today() and i.status!="PAID"),Decimal("0"))
+        from app.models import ElectronicInvoice
+        invoice=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==s.id))
+        balance=money(total-installment_paid)
         out.append({"id":str(s.id),"customer_id":str(s.customer_id),"customer":c.full_name if c else "",
-          "property_id":str(s.property_id),"property":p.code if p else "","confirmation_date":s.confirmation_date,
+          "property_id":str(s.property_id),"property":p.code if p else "","property_status":p.status.code if p else "",
+          "confirmation_date":s.confirmation_date,
           "sale_price":float(s.sale_price),"down_payment":float(s.down_payment),"financed_amount":float(s.financed_amount),
-          "installment_count":s.installment_count,"paid":float(paid),"balance":float(total-installment_paid),"overdue":float(overdue)})
+          "installment_count":s.installment_count,"paid":float(paid),"balance":float(balance),"overdue":float(overdue),
+          "invoice_id":str(invoice.id) if invoice else None,
+          "invoice_status":invoice.status if invoice else None,
+          "can_generate_invoice":bool(p and p.status.code=="PAID" and balance<=0 and not invoice)})
     return out
 
 @router.post("/sales")
@@ -101,9 +107,6 @@ def create_sale(payload:SaleCreate,request:Request,db:Session=Depends(get_db),cu
     prop.status_id=prop_status(db,"PAYING" if financed>0 else "PAID").id
     if reservation: reservation.active=False
     db.add(sale); db.flush()
-    if financed<=0:
-        invoice=ensure_invoice_for_paid_sale(db,sale)
-        audit(db,current,"EINVOICE_CREATE","electronic_invoice",invoice.id,{"sale_id":sale.id,"status":invoice.status,"document_number":invoice.document_number},request)
     audit(db,current,"SALE_CONFIRM","sale",sale.id,{"customer_id":customer.id,"property_id":prop.id,"sale_price":sale.sale_price,"down_payment":sale.down_payment,"installment_count":sale.installment_count},request)
     db.commit(); db.refresh(sale)
     return {"id":str(sale.id)}
@@ -135,8 +138,6 @@ def create_payment(payload:PaymentCreate,request:Request,db:Session=Depends(get_
         remaining=money(remaining-applied)
     if all(i.status=="PAID" for i in db.scalars(select(Installment).where(Installment.sale_id==sale.id)).all()):
         prop=db.get(Property,sale.property_id); prop.status_id=prop_status(db,"PAID").id
-        invoice=ensure_invoice_for_paid_sale(db,sale)
-        audit(db,current,"EINVOICE_CREATE","electronic_invoice",invoice.id,{"sale_id":sale.id,"status":invoice.status,"document_number":invoice.document_number},request)
     audit(db,current,"PAYMENT_CREATE","payment",payment.id,{"sale_id":sale.id,"amount":payment.amount,"payment_method":payment.payment_method,"reference":payment.reference},request)
     db.commit(); db.refresh(payment)
     return {"id":str(payment.id)}
