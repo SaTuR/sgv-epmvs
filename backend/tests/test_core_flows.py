@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.db import SessionLocal
 from app.models import ElectronicInvoice, Installment, Permission, Property, Role, Sale
 from tests.conftest import create_customer_and_property, create_user_with_permissions, login_headers
+from app.services.electronic_invoice import modulo11
 
 
 def test_health(client):
@@ -358,3 +359,77 @@ def test_einvoice_is_idempotent_for_fully_paid_sale(client,admin_headers):
         assert len(invoices)==1
     finally:
         db.close()
+
+
+def test_sri_modulo11_returns_one_digit():
+    assert modulo11("071020260117900000010011001000000001123456781") in "0123456789"
+
+
+def test_admin_can_generate_sri_xml_for_paid_sale(client,admin_headers):
+    current=client.get("/api/settings",headers=admin_headers)
+    assert current.status_code==200, current.text
+    original=current.json()
+
+    sri_payload={
+        "sri_enabled":True,
+        "sri_environment":"TEST",
+        "sri_ruc":"1790016919001",
+        "sri_business_name":"EMPRESA PUBLICA MUNICIPAL DE VIVIENDA DE SAMBORONDON",
+        "sri_trade_name":"EPMVS",
+        "sri_accounting_required":True,
+        "sri_special_taxpayer_code":None,
+        "sri_withholding_agent_code":None,
+        "sri_establishment_code":"001",
+        "sri_emission_point":"001",
+        "sri_invoice_sequence":900000001,
+    }
+    saved=client.put("/api/settings/sri",json=sri_payload,headers=admin_headers)
+    assert saved.status_code==200, saved.text
+
+    customer_id,property_id=create_customer_and_property()
+    sale=client.post("/api/sales",json={
+        "customer_id":customer_id,
+        "property_id":property_id,
+        "sale_price":15000,
+        "down_payment":15000,
+        "installment_count":1,
+        "frequency":"MONTHLY",
+        "first_due_date":str(date.today()+timedelta(days=30)),
+    },headers=admin_headers)
+    assert sale.status_code==200, sale.text
+    sale_id=sale.json()["id"]
+
+    db=SessionLocal()
+    try:
+        invoice=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==uuid.UUID(sale_id)))
+        invoice_id=str(invoice.id)
+        assert invoice.status=="PENDING_XML"
+    finally:
+        db.close()
+
+    generated=client.post(f"/api/electronic-invoices/{invoice_id}/generate-xml",headers=admin_headers)
+    assert generated.status_code==200, generated.text
+    data=generated.json()
+    assert data["status"]=="XML_GENERATED"
+    assert len(data["access_key"])==49
+    assert data["access_key"].isdigit()
+
+    downloaded=client.get(f"/api/electronic-invoices/{invoice_id}/xml",headers=admin_headers)
+    assert downloaded.status_code==200, downloaded.text
+    assert b"<factura" in downloaded.content
+    assert data["access_key"].encode() in downloaded.content
+
+    restore={
+        "sri_enabled":original.get("sri_enabled",False),
+        "sri_environment":original.get("sri_environment","TEST"),
+        "sri_ruc":original.get("sri_ruc") or "1790016919001",
+        "sri_business_name":original.get("sri_business_name") or original.get("institution_name") or "EPMVS",
+        "sri_trade_name":original.get("sri_trade_name"),
+        "sri_accounting_required":original.get("sri_accounting_required",True),
+        "sri_special_taxpayer_code":original.get("sri_special_taxpayer_code"),
+        "sri_withholding_agent_code":original.get("sri_withholding_agent_code"),
+        "sri_establishment_code":original.get("sri_establishment_code") or "001",
+        "sri_emission_point":original.get("sri_emission_point") or "001",
+        "sri_invoice_sequence":original.get("sri_invoice_sequence") or 1,
+    }
+    client.put("/api/settings/sri",json=restore,headers=admin_headers)
