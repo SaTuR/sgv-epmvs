@@ -14,6 +14,8 @@ export default function SettingsPage(){
   const [form,setForm]=useState<any>(null)
   const [saving,setSaving]=useState(false)
   const [backupAction,setBackupAction]=useState('')
+  const [sriCertPassword,setSriCertPassword]=useState('')
+  const [sriCertAction,setSriCertAction]=useState(false)
   const [message,setMessage]=useState('')
   const [error,setError]=useState('')
 
@@ -58,6 +60,20 @@ export default function SettingsPage(){
       })})
       setForm(data);setMessage('Configuración SRI guardada correctamente.')
     }catch(e:any){setError(e.message||'No fue posible guardar la configuración SRI')}
+  }
+
+  async function uploadSriCertificate(file:File){
+    setSriCertAction(true);setMessage('');setError('')
+    try{
+      if(!sriCertPassword) throw new Error('Ingrese la contraseña del certificado.')
+      const body=new FormData()
+      body.append('password',sriCertPassword)
+      body.append('file',file)
+      const data=await apiFetch('/settings/sri/certificate',{method:'POST',body})
+      setForm(data);setSriCertPassword('')
+      setMessage('Certificado electrónico validado y cargado correctamente.')
+    }catch(e:any){setError(e.message||'No fue posible cargar el certificado electrónico')}
+    finally{setSriCertAction(false)}
   }
 
   async function saveBackup(){
@@ -192,6 +208,30 @@ export default function SettingsPage(){
           <label><span className="text-sm font-medium text-slate-700">Contribuyente especial</span><input value={form.sri_special_taxpayer_code||''} onChange={e=>setForm({...form,sri_special_taxpayer_code:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
           <label><span className="text-sm font-medium text-slate-700">Agente de retención</span><input value={form.sri_withholding_agent_code||''} onChange={e=>setForm({...form,sri_withholding_agent_code:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
         </div>
+
+        <div className="mt-5 rounded-xl border bg-slate-50 p-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex-1">
+              <p className="font-medium text-slate-800">Certificado de firma electrónica</p>
+              <p className="mt-1 text-sm text-slate-500">Archivo PKCS#12 (.p12/.pfx). La contraseña se almacena cifrada y nunca se muestra nuevamente.</p>
+              {form.sri_certificate_configured?<div className="mt-3 grid gap-1 text-xs text-slate-600">
+                <p><b>Estado:</b> Configurado</p>
+                <p><b>Titular:</b> {form.sri_certificate_subject||'-'}</p>
+                <p><b>Emisor:</b> {form.sri_certificate_issuer||'-'}</p>
+                <p><b>Serie:</b> {form.sri_certificate_serial||'-'}</p>
+                <p><b>Vigencia:</b> {form.sri_certificate_valid_from?new Date(form.sri_certificate_valid_from).toLocaleDateString('es-EC'):'-'} hasta {form.sri_certificate_valid_to?new Date(form.sri_certificate_valid_to).toLocaleDateString('es-EC'):'-'}</p>
+              </div>:<p className="mt-3 text-sm font-medium text-amber-700">No hay certificado configurado.</p>}
+            </div>
+            <div className="w-full lg:max-w-md">
+              <label><span className="text-sm font-medium text-slate-700">Contraseña del certificado</span><input type="password" autoComplete="new-password" value={sriCertPassword} onChange={e=>setSriCertPassword(e.target.value)} className="mt-1 w-full rounded-xl border bg-white px-3 py-2.5"/></label>
+              <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold text-slate-700">
+                <Upload className="h-4 w-4"/>{sriCertAction?'Validando…':'Cargar .p12 / .pfx'}
+                <input disabled={sriCertAction} type="file" accept=".p12,.pfx,application/x-pkcs12" className="hidden" onChange={e=>e.target.files?.[0]&&uploadSriCertificate(e.target.files[0])}/>
+              </label>
+            </div>
+          </div>
+        </div>
+
         <div className="mt-5 flex justify-end"><button type="button" onClick={saveSri} className="rounded-xl bg-[#3A6C32] px-4 py-2.5 text-sm font-semibold text-white">Guardar configuración SRI</button></div>
       </section>
 
