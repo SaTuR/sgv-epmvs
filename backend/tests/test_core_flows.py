@@ -12,7 +12,7 @@ from app.models import ElectronicInvoice, Installment, Permission, Property, Rol
 from tests.conftest import create_customer_and_property, create_user_with_permissions, login_headers
 from app.services.electronic_invoice import modulo11
 import app.services.sri_signing as sri_signing
-from app.services.sri_client import parse_authorization_response, parse_receipt_response
+from app.services.sri_client import build_authorization_envelope, build_receipt_envelope, parse_authorization_response, parse_receipt_response
 from app.services.ride import generate_ride
 
 
@@ -795,3 +795,17 @@ def test_authorized_invoice_marks_property_as_invoiced(client,admin_headers,monk
         assert invoice.status=="AUTHORIZED"
     finally:
         db.close()
+
+
+def test_sri_receipt_envelope_includes_soap_header_and_operation():
+    envelope=build_receipt_envelope(b"<factura id='comprobante'/>")
+    assert b"<soapenv:Header" in envelope
+    assert b"validarComprobante" in envelope
+    assert b"<xml>" in envelope
+
+
+def test_sri_authorization_envelope_includes_soap_header():
+    envelope=build_authorization_envelope("1"*49)
+    assert b"<soapenv:Header" in envelope
+    assert b"autorizacionComprobante" in envelope
+    assert b"claveAccesoComprobante" in envelope
