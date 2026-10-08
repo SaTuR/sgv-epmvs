@@ -27,20 +27,40 @@ def endpoints(environment:str)->tuple[str,str]:
     return TEST_RECEIPT_URL,TEST_AUTH_URL
 
 
+def _soap_fault_message(content:bytes)->str|None:
+    if not content:
+        return None
+    try:
+        root=etree.fromstring(content)
+        values=root.xpath("//*[local-name()='faultstring']/text() | //*[local-name()='Text']/text()")
+        if values:
+            return " | ".join(str(x).strip() for x in values if str(x).strip())
+    except etree.XMLSyntaxError:
+        pass
+    text=content.decode("utf-8","replace").strip()
+    return text[:1000] if text else None
+
+
 def _soap_post(url:str,action:str,envelope:bytes,timeout:float=30.0)->bytes:
     headers={
         "Content-Type":"text/xml; charset=utf-8",
-        "SOAPAction":action,
+        "SOAPAction":'""',
+        "Accept":"text/xml",
         "User-Agent":"SGV-EPMVS/1.0",
     }
     try:
         with httpx.Client(timeout=timeout,verify=True,follow_redirects=True) as client:
             response=client.post(url,content=envelope,headers=headers)
-            response.raise_for_status()
+            if response.status_code>=400:
+                fault=_soap_fault_message(response.content)
+                detail=f" Detalle SRI: {fault}" if fault else ""
+                raise ValueError(
+                    f"El SRI respondió HTTP {response.status_code} en {action}.{detail}"
+                )
             return response.content
     except httpx.TimeoutException as exc:
         raise ValueError("Tiempo de espera agotado al conectar con el SRI.") from exc
-    except httpx.HTTPError as exc:
+    except httpx.RequestError as exc:
         raise ValueError(f"Error de comunicación con el SRI: {exc}") from exc
 
 
@@ -70,6 +90,7 @@ def _messages(root:etree._Element)->list[str]:
 def build_receipt_envelope(xml_bytes:bytes)->bytes:
     encoded=base64.b64encode(xml_bytes).decode("ascii")
     root=etree.Element(etree.QName(SOAP_NS,"Envelope"),nsmap={"soapenv":SOAP_NS,"ec":REC_NS})
+    etree.SubElement(root,etree.QName(SOAP_NS,"Header"))
     body=etree.SubElement(root,etree.QName(SOAP_NS,"Body"))
     operation=etree.SubElement(body,etree.QName(REC_NS,"validarComprobante"))
     xml=etree.SubElement(operation,"xml")
@@ -79,6 +100,7 @@ def build_receipt_envelope(xml_bytes:bytes)->bytes:
 
 def build_authorization_envelope(access_key:str)->bytes:
     root=etree.Element(etree.QName(SOAP_NS,"Envelope"),nsmap={"soapenv":SOAP_NS,"ec":AUTH_NS})
+    etree.SubElement(root,etree.QName(SOAP_NS,"Header"))
     body=etree.SubElement(root,etree.QName(SOAP_NS,"Body"))
     operation=etree.SubElement(body,etree.QName(AUTH_NS,"autorizacionComprobante"))
     key=etree.SubElement(operation,"claveAccesoComprobante")
