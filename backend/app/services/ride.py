@@ -140,11 +140,12 @@ def generate_ride(invoice:ElectronicInvoice,cfg:SystemSetting,customer:Customer,
 
     styles=getSampleStyleSheet()
     black=colors.black
-    title=ParagraphStyle("RideTitle",parent=styles["Heading1"],fontName="Helvetica-Bold",fontSize=14.5,leading=17,textColor=black,spaceAfter=3)
+    primary=_hex(cfg.ride_primary_hex or "#000000")
+    title=ParagraphStyle("RideTitle",parent=styles["Heading1"],fontName="Helvetica-Bold",fontSize=14.5,leading=17,textColor=primary,spaceAfter=3)
     bold=ParagraphStyle("RideBold",parent=styles["BodyText"],fontName="Helvetica-Bold",fontSize=8.5,leading=10.5)
     normal=ParagraphStyle("RideNormal",parent=styles["BodyText"],fontName="Helvetica",fontSize=8.2,leading=10.3)
     small=ParagraphStyle("RideSmall",parent=styles["BodyText"],fontName="Helvetica",fontSize=7.2,leading=8.8)
-    section=ParagraphStyle("RideSection",parent=bold,fontSize=10.5,leading=12.5)
+    section=ParagraphStyle("RideSection",parent=bold,fontSize=10.5,leading=12.5,textColor=primary)
 
     story=[]
 
