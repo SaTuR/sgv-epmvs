@@ -611,11 +611,17 @@ def test_admin_can_update_parametric_ride_and_email_settings(client,admin_header
         "ride_qr_size_mm":30,
         "ride_qr_content_template":"{access_key}",
         "ride_primary_hex":"#3A6C32",
+        "ride_code_type":"BARCODE",
+        "ride_barcode_height_mm":18,
+        "ride_show_payment_table":True,
+        "ride_show_additional_info":True,
     }
     r=client.put("/api/settings/ride",json=ride,headers=admin_headers)
     assert r.status_code==200, r.text
     assert r.json()["ride_title"]=="RIDE {document_number}"
     assert r.json()["ride_qr_size_mm"]==30
+    assert r.json()["ride_code_type"]=="BARCODE"
+    assert r.json()["ride_show_payment_table"] is True
 
     email={
         "invoice_email_enabled":False,
