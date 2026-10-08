@@ -19,6 +19,7 @@ def upgrade():
     op.add_column("system_settings",sa.Column("ride_show_additional_info",sa.Boolean(),nullable=False,server_default=sa.true()))
     op.execute("UPDATE system_settings SET ride_title='Factura Electrónica' WHERE ride_title='RIDE - FACTURA ELECTRÓNICA'")
     op.execute("UPDATE system_settings SET ride_footer='Documento generado electrónicamente' WHERE ride_footer='Documento generado por el Sistema de Gestión y Venta'")
+    op.execute("UPDATE system_settings SET ride_primary_hex='#000000' WHERE ride_primary_hex='#3A6C32'")
 
 def downgrade():
     op.drop_column("system_settings","ride_show_additional_info")
