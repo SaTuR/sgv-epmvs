@@ -766,14 +766,14 @@ def test_authorized_invoice_marks_property_as_invoiced(client,admin_headers,monk
     try:
         invoice=db.get(ElectronicInvoice,uuid.UUID(invoice_id))
         invoice.status="SENT"
-        invoice.access_key="2"*49
+        invoice.access_key=str(uuid.uuid4().int % (10**49)).zfill(49)
         db.commit()
     finally:
         db.close()
 
     monkeypatch.setattr("app.api.electronic_invoices.request_authorization",lambda invoice:{
         "state":"AUTORIZADO",
-        "authorization_number":"3"*49,
+        "authorization_number":str(uuid.uuid4().int % (10**49)).zfill(49),
         "authorization_date":datetime.now(timezone.utc),
         "environment":"PRUEBAS",
         "document_xml":"<factura id=\"comprobante\"></factura>",
