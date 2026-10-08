@@ -96,7 +96,7 @@ export default function SettingsPage(){
         ride_show_qr:Boolean(form.ride_show_qr),
         ride_qr_size_mm:Number(form.ride_qr_size_mm||28),
         ride_qr_content_template:form.ride_qr_content_template||'{access_key}',
-        ride_primary_hex:form.ride_primary_hex||'#3A6C32',
+        ride_primary_hex:form.ride_primary_hex||'#000000',
         ride_code_type:form.ride_code_type||'BARCODE',
         ride_barcode_height_mm:Number(form.ride_barcode_height_mm||18),
         ride_show_payment_table:Boolean(form.ride_show_payment_table),
@@ -322,7 +322,7 @@ export default function SettingsPage(){
           <label><span className="text-sm font-medium text-slate-700">Título</span><input value={form.ride_title||''} onChange={e=>setForm({...form,ride_title:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
           <label><span className="text-sm font-medium text-slate-700">Subtítulo</span><input value={form.ride_subtitle||''} onChange={e=>setForm({...form,ride_subtitle:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
           <label><span className="text-sm font-medium text-slate-700">Tamaño de página</span><select value={form.ride_page_size||'A4'} onChange={e=>setForm({...form,ride_page_size:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option value="A4">A4</option><option value="LETTER">Carta</option></select></label>
-          <label><span className="text-sm font-medium text-slate-700">Color principal</span><input type="color" value={form.ride_primary_hex||'#3A6C32'} onChange={e=>setForm({...form,ride_primary_hex:e.target.value})} className="mt-1 h-11 w-full rounded-xl border px-2"/></label>
+          <label><span className="text-sm font-medium text-slate-700">Color principal</span><input type="color" value={form.ride_primary_hex||'#000000'} onChange={e=>setForm({...form,ride_primary_hex:e.target.value})} className="mt-1 h-11 w-full rounded-xl border px-2"/></label>
           <label><span className="text-sm font-medium text-slate-700">Código visual</span><select value={form.ride_code_type||'BARCODE'} onChange={e=>setForm({...form,ride_code_type:e.target.value,ride_show_qr:e.target.value==='QR'})} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option value="BARCODE">Código de barras</option><option value="QR">Código QR</option><option value="NONE">Solo clave en texto</option></select></label>
           {form.ride_code_type==='QR'?<label><span className="text-sm font-medium text-slate-700">Tamaño QR (mm)</span><input min="15" max="50" type="number" value={form.ride_qr_size_mm||28} onChange={e=>setForm({...form,ride_qr_size_mm:Number(e.target.value)})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>:<label><span className="text-sm font-medium text-slate-700">Altura código de barras (mm)</span><input min="8" max="30" type="number" value={form.ride_barcode_height_mm||18} onChange={e=>setForm({...form,ride_barcode_height_mm:Number(e.target.value)})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>}
           {form.ride_code_type==='QR'&&<label><span className="text-sm font-medium text-slate-700">Contenido QR</span><input value={form.ride_qr_content_template||'{access_key}'} onChange={e=>setForm({...form,ride_qr_content_template:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>}
