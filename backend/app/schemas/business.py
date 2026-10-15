@@ -35,3 +35,7 @@ class PropertyCreate(BaseModel):
     total_price: Decimal = Field(ge=0)
     location_reference: str = Field(min_length=1)
     notes: str = Field(min_length=1)
+
+
+class PropertyUpdate(PropertyCreate):
+    pass
