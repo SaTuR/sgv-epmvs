@@ -7,8 +7,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_permission
 from app.config import settings
-from app.models import Block, Customer, Project, ProjectStage, Property, PropertyStatus, StageMap, User
-from app.schemas.business import BlockCreate, CustomerCreate, CustomerUpdate, PropertyCreate
+from app.models import Block, Customer, Project, ProjectStage, Property, PropertyStatus, Reservation, Sale, StageMap, User
+from app.schemas.business import BlockCreate, CustomerCreate, CustomerUpdate, PropertyCreate, PropertyUpdate
 from app.services.audit import audit
 
 router = APIRouter(prefix="/api", tags=["Gestión comercial"])
@@ -123,3 +123,65 @@ def create_property(payload:PropertyCreate,request:Request,db:Session=Depends(ge
         db.commit()
     except IntegrityError: db.rollback(); raise HTTPException(409,"Código o número de lote duplicado")
     db.refresh(p); return {"id":str(p.id),"code":p.code}
+
+
+@router.put("/properties/{property_id}")
+def update_property(property_id: uuid.UUID,payload:PropertyUpdate,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("properties.manage"))):
+    p=db.get(Property,property_id)
+    if not p: raise HTTPException(404,"Predio no encontrado")
+    block=db.get(Block,uuid.UUID(payload.block_id))
+    if not block: raise HTTPException(404,"Manzana no encontrada")
+    status_obj=db.scalar(select(PropertyStatus).where(PropertyStatus.code==payload.status_code))
+    if not status_obj: raise HTTPException(400,"Estado de predio inválido")
+
+    old={
+        "code":p.code,"block_id":str(p.block_id),"lot_number":p.lot_number,
+        "cadastral_key":p.cadastral_key,"area_m2":str(p.area_m2),
+        "price_per_m2":str(p.price_per_m2) if p.price_per_m2 is not None else None,
+        "total_price":str(p.total_price),"location_reference":p.location_reference,
+        "notes":p.notes,"status":p.status.code,
+    }
+    data=payload.model_dump(exclude={"status_code","block_id","total_price"})
+    for key,value in data.items(): setattr(p,key,value)
+    p.block_id=block.id
+    p.status_id=status_obj.id
+    p.total_price=(payload.area_m2*payload.price_per_m2).quantize(Decimal("0.01"))
+
+    try:
+        db.flush()
+        audit(db,current,"PROPERTY_UPDATE","property",p.id,{
+            "old":old,
+            "new":{"code":p.code,"block_id":str(p.block_id),"lot_number":p.lot_number,
+                   "cadastral_key":p.cadastral_key,"area_m2":str(p.area_m2),
+                   "price_per_m2":str(p.price_per_m2),"total_price":str(p.total_price),
+                   "location_reference":p.location_reference,"notes":p.notes,
+                   "status":status_obj.code}
+        },request)
+        db.commit()
+    except IntegrityError:
+        db.rollback(); raise HTTPException(409,"Código o número de lote duplicado")
+    db.refresh(p)
+    return {"id":str(p.id),"code":p.code}
+
+
+@router.delete("/properties/{property_id}")
+def delete_property(property_id: uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("properties.manage"))):
+    p=db.get(Property,property_id)
+    if not p: raise HTTPException(404,"Predio no encontrado")
+
+    reservation_count=db.scalar(select(func.count(Reservation.id)).where(Reservation.property_id==property_id)) or 0
+    sale_count=db.scalar(select(func.count(Sale.id)).where(Sale.property_id==property_id)) or 0
+    if reservation_count or sale_count:
+        raise HTTPException(
+            409,
+            "No se puede eliminar el predio porque tiene historial de reservas o ventas. Debe conservarse por trazabilidad."
+        )
+
+    snapshot={"code":p.code,"block_id":str(p.block_id),"lot_number":p.lot_number,"cadastral_key":p.cadastral_key}
+    audit(db,current,"PROPERTY_DELETE","property",p.id,snapshot,request)
+    db.delete(p)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback(); raise HTTPException(409,"No se puede eliminar el predio porque tiene información relacionada")
+    return {"ok":True,"message":"Predio eliminado correctamente"}
