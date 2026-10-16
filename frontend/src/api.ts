@@ -1,5 +1,12 @@
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
+function handleUnauthorized(response: Response, token: string | null) {
+  if (response.status === 401 && token) {
+    localStorage.removeItem('sgv_token')
+    window.dispatchEvent(new CustomEvent('sgv:session-expired'))
+  }
+}
+
 export async function apiFetch(path: string, options: RequestInit = {}) {
   const token = localStorage.getItem('sgv_token')
   const headers = new Headers(options.headers)
@@ -7,7 +14,9 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
   if (token) headers.set('Authorization', 'Bearer ' + token)
   const response = await fetch(API_URL + path, { ...options, headers })
   if (!response.ok) {
+    handleUnauthorized(response, token)
     const body = await response.json().catch(() => ({}))
+    if (response.status === 401 && token) throw new Error('La sesión ha expirado. Inicie sesión nuevamente.')
     throw new Error(body.detail || 'Error de comunicación con el servidor')
   }
   return response.json()
@@ -19,7 +28,9 @@ export async function apiDownload(path:string, fallbackName:string){
   if(token) headers.set('Authorization','Bearer '+token)
   const response=await fetch(API_URL+path,{headers})
   if(!response.ok){
+    handleUnauthorized(response,token)
     const body=await response.json().catch(()=>({}))
+    if(response.status===401&&token) throw new Error('La sesión ha expirado. Inicie sesión nuevamente.')
     throw new Error(body.detail||'No fue posible generar el documento')
   }
   const blob=await response.blob()
