@@ -24,7 +24,12 @@ export default function App(){
   const [menuOpen,setMenuOpen]=useState(false)
   const [active,setActive]=useState('Dashboard')
   async function loadUser(){try{setUser(await apiFetch('/auth/me'))}catch{localStorage.removeItem('sgv_token');setUser(null)}finally{setLoading(false)}}
-  useEffect(()=>{loadUser()},[])
+  useEffect(()=>{
+    loadUser()
+    const sessionExpired=()=>{localStorage.removeItem('sgv_token');setUser(null);setActive('Dashboard')}
+    window.addEventListener('sgv:session-expired',sessionExpired)
+    return ()=>window.removeEventListener('sgv:session-expired',sessionExpired)
+  },[])
   function logout(){localStorage.removeItem('sgv_token');setUser(null)}
   function page(){
     if(active==='Dashboard')return <DashboardPage/>
