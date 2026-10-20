@@ -114,7 +114,7 @@ def create_sale(payload:SaleCreate,request:Request,db:Session=Depends(get_db),cu
     return {"id":str(sale.id)}
 
 @router.delete("/sales/{sale_id}")
-def delete_sale(sale_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("sales.manage"))):
+def delete_sale(sale_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
     sale=db.get(Sale,sale_id)
     if not sale or not sale.active:
         raise HTTPException(404,"Compra no encontrada")
