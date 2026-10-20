@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Building2, CircleDollarSign, FileCheck2, FileClock, Landmark, MapPinned, ReceiptText, TrendingUp, WalletCards } from 'lucide-react'
+import { AlertTriangle, Building2, CircleDollarSign, FileCheck2, FileClock, Landmark, MapPinned, ReceiptText, TrendingUp, Users, WalletCards } from 'lucide-react'
 import { apiFetch } from '../api'
 import { propertyStatusBarClass } from '../utils/statusStyles'
 
@@ -24,6 +24,7 @@ export default function DashboardPage(){
   const maxMonth=Math.max(1,...data.collections_by_month.map((x:any)=>x.amount))
 
   const cards=[
+    ['Clientes registrados',String(t.customers||0),Users],
     ['Predios registrados',String(t.properties),MapPinned],
     ['Compras confirmadas',String(t.confirmed),Building2],
     ['Total recaudado',money(t.collected),CircleDollarSign],
