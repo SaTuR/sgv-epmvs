@@ -3,10 +3,10 @@ from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_permission
-from app.models import Customer, Installment, Payment, PaymentAllocation, Property, PropertyStatus, Reservation, Sale, User
+from app.models import Customer, ElectronicInvoice, Installment, IssuedDocument, Payment, PaymentAllocation, Property, PropertyStatus, Reservation, Sale, User
 from app.schemas.finance import PaymentCreate, ReservationCreate, SaleCreate
 from app.services.audit import audit
 
@@ -62,8 +62,9 @@ def sales(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
         paid=s.down_payment+installment_paid
         total=sum((i.amount for i in s.installments),Decimal("0"))
         overdue=sum((i.amount-i.paid_amount for i in s.installments if i.due_date<date.today() and i.status!="PAID"),Decimal("0"))
-        from app.models import ElectronicInvoice
         invoice=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==s.id))
+        payment_count=db.scalar(select(func.count(Payment.id)).where(Payment.sale_id==s.id)) or 0
+        document_count=db.scalar(select(func.count(IssuedDocument.id)).where(IssuedDocument.sale_id==s.id)) or 0
         balance=money(total-installment_paid)
         out.append({"id":str(s.id),"customer_id":str(s.customer_id),"customer":c.full_name if c else "",
           "property_id":str(s.property_id),"property":p.code if p else "","property_status":p.status.code if p else "",
@@ -72,7 +73,8 @@ def sales(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
           "installment_count":s.installment_count,"paid":float(paid),"balance":float(balance),"overdue":float(overdue),
           "invoice_id":str(invoice.id) if invoice else None,
           "invoice_status":invoice.status if invoice else None,
-          "can_generate_invoice":bool(p and p.status.code=="PAID" and balance<=0 and not invoice)})
+          "can_generate_invoice":bool(p and p.status.code=="PAID" and balance<=0 and not invoice),
+          "can_delete":bool(not invoice and payment_count==0 and document_count==0 and money(s.down_payment)==Decimal("0.00"))})
     return out
 
 @router.post("/sales")
@@ -110,6 +112,39 @@ def create_sale(payload:SaleCreate,request:Request,db:Session=Depends(get_db),cu
     audit(db,current,"SALE_CONFIRM","sale",sale.id,{"customer_id":customer.id,"property_id":prop.id,"sale_price":sale.sale_price,"down_payment":sale.down_payment,"installment_count":sale.installment_count},request)
     db.commit(); db.refresh(sale)
     return {"id":str(sale.id)}
+
+@router.delete("/sales/{sale_id}")
+def delete_sale(sale_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("sales.manage"))):
+    sale=db.get(Sale,sale_id)
+    if not sale or not sale.active:
+        raise HTTPException(404,"Compra no encontrada")
+
+    invoice=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==sale.id))
+    payment_count=db.scalar(select(func.count(Payment.id)).where(Payment.sale_id==sale.id)) or 0
+    document_count=db.scalar(select(func.count(IssuedDocument.id)).where(IssuedDocument.sale_id==sale.id)) or 0
+
+    if invoice:
+        raise HTTPException(409,"No se puede eliminar la compra porque ya tiene factura electrónica asociada")
+    if payment_count>0 or money(sale.down_payment)>Decimal("0.00"):
+        raise HTTPException(409,"No se puede eliminar la compra porque registra valores pagados")
+    if document_count>0:
+        raise HTTPException(409,"No se puede eliminar la compra porque tiene documentos emitidos")
+
+    prop=db.get(Property,sale.property_id)
+    audit(db,current,"SALE_DELETE","sale",sale.id,{
+        "customer_id":str(sale.customer_id),
+        "property_id":str(sale.property_id),
+        "sale_price":str(sale.sale_price),
+        "down_payment":str(sale.down_payment),
+        "installment_count":sale.installment_count,
+    },request)
+
+    if prop:
+        prop.status_id=prop_status(db,"AVAILABLE").id
+
+    db.delete(sale)
+    db.commit()
+    return {"ok":True,"message":"Compra eliminada y predio liberado correctamente"}
 
 @router.get("/sales/{sale_id}/installments")
 def installments(sale_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depends(get_current_user)):
