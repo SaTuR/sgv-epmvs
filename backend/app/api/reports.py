@@ -30,6 +30,7 @@ def csv_response(rows,headers,filename):
 
 @router.get("/dashboard")
 def dashboard(stage_id:uuid.UUID|None=None,db:Session=Depends(get_db),_:User=Depends(get_current_user)):
+    customers_count=len(db.scalars(select(Customer).where(Customer.active.is_(True))).all())
     props=db.scalars(select(Property).where(Property.active.is_(True))).all()
     if stage_id:
         props=[p for p in props if p.block.stage_id==stage_id]
@@ -90,6 +91,7 @@ def dashboard(stage_id:uuid.UUID|None=None,db:Session=Depends(get_db),_:User=Dep
         monthly[key]=monthly.get(key,Decimal("0"))+p.amount
     return {
         "totals":{
+            "customers":customers_count,
             "properties":len(props),"available":status_counts.get("Disponible",0),
             "reserved":status_counts.get("Reservado",0),"confirmed":confirmed,"paid":paid_props,
             "total_value":float(total_value),"committed_sales":float(committed),
