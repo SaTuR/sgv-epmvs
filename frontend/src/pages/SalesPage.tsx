@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { BadgeCheck, CalendarClock, Eye, FileCheck2, FileText, Plus, ReceiptText, ShoppingCart } from 'lucide-react'
+import { BadgeCheck, CalendarClock, Eye, FileCheck2, FileText, Plus, ReceiptText, Search, ShoppingCart } from 'lucide-react'
 import { apiDownload, apiFetch } from '../api'
 import { installmentStatusBadgeClass } from '../utils/statusStyles'
 
@@ -18,6 +18,8 @@ export default function SalesPage({permissions}:{permissions:string[]}){
   const [runtimeSettings,setRuntimeSettings]=useState<any>({reservation_default_days:3,currency_symbol:'$'})
   const [resForm,setResForm]=useState<any>({customer_id:'',property_id:'',reservation_date:today(),expires_on:'',notes:''})
   const [saleForm,setSaleForm]=useState<any>({customer_id:'',property_id:'',reservation_id:'',sale_price:'',down_payment:'0',installment_count:'12',frequency:'MONTHLY',first_due_date:today(),notes:''})
+  const [customerSearch,setCustomerSearch]=useState('')
+  const [propertySearch,setPropertySearch]=useState('')
 
   async function load(){
     const [c,p,r,s]=await Promise.all([apiFetch('/customers'),apiFetch('/properties'),apiFetch('/reservations'),apiFetch('/sales')])
@@ -26,6 +28,16 @@ export default function SalesPage({permissions}:{permissions:string[]}){
   useEffect(()=>{load();apiFetch('/settings/runtime').then(setRuntimeSettings).catch(()=>{})},[])
 
   const available=properties.filter((p:any)=>['AVAILABLE','RESERVED'].includes(p.status.code))
+  const customerTerm=customerSearch.trim().toLocaleLowerCase('es')
+  const propertyTerm=propertySearch.trim().toLocaleLowerCase('es')
+  const filteredCustomers=customerTerm
+    ? customers.filter((c:any)=>[c.identification,c.full_name,c.email,c.mobile].some(v=>String(v??'').toLocaleLowerCase('es').includes(customerTerm)))
+    : customers
+  const filteredAvailableForReservation=properties
+    .filter((p:any)=>p.status.code==='AVAILABLE')
+    .filter((p:any)=>!propertyTerm || [p.code,p.block,p.lot_number,p.cadastral_key,p.location_reference].some(v=>String(v??'').toLocaleLowerCase('es').includes(propertyTerm)))
+  const filteredAvailableForSale=available
+    .filter((p:any)=>!propertyTerm || [p.code,p.block,p.lot_number,p.cadastral_key,p.location_reference].some(v=>String(v??'').toLocaleLowerCase('es').includes(propertyTerm)))
 
   async function saveReservation(e:FormEvent){
     e.preventDefault()
@@ -34,6 +46,8 @@ export default function SalesPage({permissions}:{permissions:string[]}){
   }
 
   function fromReservation(r:any){
+    setCustomerSearch('')
+    setPropertySearch('')
     const prop=properties.find((p:any)=>p.id===r.property_id)
     setSaleForm({...saleForm,customer_id:r.customer_id,property_id:r.property_id,reservation_id:r.id,sale_price:String(prop?.total_price||''),first_due_date:today()})
     setOpen('sale')
@@ -69,7 +83,7 @@ export default function SalesPage({permissions}:{permissions:string[]}){
   return <div>
     <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div><p className="text-sm font-semibold text-[#52AD56]">Comercialización</p><h2 className="mt-1 text-2xl font-semibold">Reservas y ventas</h2><p className="mt-1 text-sm text-slate-500">Del lote disponible a la compra confirmada.</p></div>
-      <button onClick={()=>{const d=today();setResForm({...resForm,reservation_date:d,expires_on:addDays(d,Number(runtimeSettings.reservation_default_days||3))});setOpen('reservation')}} className="inline-flex items-center gap-2 rounded-xl bg-[#3A6C32] px-4 py-2.5 text-sm font-semibold text-white"><Plus className="h-4 w-4"/>Nueva reserva</button>
+      <button onClick={()=>{const d=today();setCustomerSearch('');setPropertySearch('');setResForm({...resForm,reservation_date:d,expires_on:addDays(d,Number(runtimeSettings.reservation_default_days||3))});setOpen('reservation')}} className="inline-flex items-center gap-2 rounded-xl bg-[#3A6C32] px-4 py-2.5 text-sm font-semibold text-white"><Plus className="h-4 w-4"/>Nueva reserva</button>
     </div>
 
     <div className="mt-6 flex gap-2">
@@ -81,14 +95,14 @@ export default function SalesPage({permissions}:{permissions:string[]}){
     :<div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Predio</th><th className="px-5 py-3">Precio</th><th className="px-5 py-3">Pagado</th><th className="px-5 py-3">Saldo</th><th className="px-5 py-3">Estado</th><th className="px-5 py-3 text-right">Documentos</th></tr></thead><tbody>{sales.map(s=><tr key={s.id} className="border-t"><td className="px-5 py-4 font-medium">{s.customer}</td><td className="px-5 py-4">{s.property}</td><td className="px-5 py-4">$ {s.sale_price.toFixed(2)}</td><td className="px-5 py-4 text-emerald-700">$ {s.paid.toFixed(2)}</td><td className="px-5 py-4 font-semibold">$ {s.balance.toFixed(2)}</td><td className="px-5 py-4"><span className="text-xs font-semibold">{s.property_status==='INVOICED'?'Facturado':s.property_status==='PAID'?'Pagado':s.property_status==='PAYING'?'En proceso de pago':s.property_status}</span></td><td className="px-5 py-4"><div className="flex flex-wrap justify-end gap-2">{canCreateInvoice&&s.can_generate_invoice&&<button onClick={()=>generateInvoice(s)} className="inline-flex items-center gap-1 rounded-lg bg-[#3A6C32] px-3 py-2 text-xs font-semibold text-white"><ReceiptText className="h-4 w-4"/>Generar factura</button>}{s.invoice_id&&<span className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Factura creada</span>}<button onClick={()=>showInstallments(s)} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold"><Eye className="h-4 w-4"/>Cuotas</button><button onClick={()=>apiDownload('/sales/'+s.id+'/statement.pdf','estado-cuenta.pdf')} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-[#3A6C32]"><FileText className="h-4 w-4"/>Estado</button><button onClick={()=>apiDownload('/sales/'+s.id+'/payments-certificate.pdf','certificado-pagos.pdf')} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-[#3A6C32]"><FileCheck2 className="h-4 w-4"/>Certificado</button></div></td></tr>)}</tbody></table>{!sales.length&&<div className="py-14 text-center text-slate-400"><ShoppingCart className="mx-auto h-10 w-10"/><p className="mt-3">No hay compras confirmadas.</p></div>}</div>}
 
     {open==='reservation'&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><form onSubmit={saveReservation} className="w-full max-w-xl rounded-2xl bg-white p-6"><h3 className="text-xl font-semibold">Nueva reserva</h3><div className="mt-5 grid gap-4">
-      <label>Cliente<select required value={resForm.customer_id} onChange={e=>setResForm({...resForm,customer_id:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{customers.map(c=><option key={c.id} value={c.id}>{c.identification} · {c.full_name}</option>)}</select></label>
-      <label>Predio disponible<select required value={resForm.property_id} onChange={e=>setResForm({...resForm,property_id:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{properties.filter((p:any)=>p.status.code==='AVAILABLE').map((p:any)=><option key={p.id} value={p.id}>{p.code} · {p.block} / Lote {p.lot_number} · {runtimeSettings.currency_symbol} {p.total_price.toFixed(2)}</option>)}</select></label>
+      <label>Cliente<div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="Buscar por cédula, nombre, correo o celular" className="w-full rounded-xl border py-2.5 pl-9 pr-3 outline-none focus:border-[#52AD56] focus:ring-2 focus:ring-[#52AD56]/20"/></div><select required value={resForm.customer_id} onChange={e=>setResForm({...resForm,customer_id:e.target.value})} className="mt-2 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{filteredCustomers.map(c=><option key={c.id} value={c.id}>{c.identification} · {c.full_name}</option>)}</select>{customerSearch&&<span className="mt-1 block text-xs text-slate-400">{filteredCustomers.length} cliente(s) encontrados</span>}</label>
+      <label>Predio disponible<div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={propertySearch} onChange={e=>setPropertySearch(e.target.value)} placeholder="Buscar por código, manzana, lote o clave catastral" className="w-full rounded-xl border py-2.5 pl-9 pr-3 outline-none focus:border-[#52AD56] focus:ring-2 focus:ring-[#52AD56]/20"/></div><select required value={resForm.property_id} onChange={e=>setResForm({...resForm,property_id:e.target.value})} className="mt-2 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{filteredAvailableForReservation.map((p:any)=><option key={p.id} value={p.id}>{p.code} · {p.block} / Lote {p.lot_number} · {runtimeSettings.currency_symbol} {p.total_price.toFixed(2)}</option>)}</select>{propertySearch&&<span className="mt-1 block text-xs text-slate-400">{filteredAvailableForReservation.length} predio(s) encontrados</span>}</label>
       <div className="grid gap-4 sm:grid-cols-2"><label>Fecha<input type="date" value={resForm.reservation_date} onChange={e=>setResForm({...resForm,reservation_date:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label><label>Válida hasta<input type="date" value={resForm.expires_on} onChange={e=>setResForm({...resForm,expires_on:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label></div>
     </div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={()=>setOpen(null)} className="rounded-xl border px-4 py-2.5">Cancelar</button><button className="rounded-xl bg-[#3A6C32] px-5 py-2.5 font-semibold text-white">Reservar</button></div></form></div>}
 
     {open==='sale'&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><form onSubmit={saveSale} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6"><div className="flex items-center gap-2"><BadgeCheck className="text-[#3A6C32]"/><h3 className="text-xl font-semibold">Confirmar compra</h3></div><div className="mt-5 grid gap-4 sm:grid-cols-2">
-      <label className="sm:col-span-2">Cliente<select required value={saleForm.customer_id} onChange={e=>setSaleForm({...saleForm,customer_id:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{customers.map(c=><option key={c.id} value={c.id}>{c.full_name}</option>)}</select></label>
-      <label className="sm:col-span-2">Predio<select required value={saleForm.property_id} onChange={e=>{const p=available.find((x:any)=>x.id===e.target.value);setSaleForm({...saleForm,property_id:e.target.value,sale_price:String(p?.total_price||'')})}} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{available.map((p:any)=><option key={p.id} value={p.id}>{p.code} · {p.block} / {p.lot_number}</option>)}</select></label>
+      <label className="sm:col-span-2">Cliente<div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="Buscar cliente" className="w-full rounded-xl border py-2.5 pl-9 pr-3"/></div><select required value={saleForm.customer_id} onChange={e=>setSaleForm({...saleForm,customer_id:e.target.value})} className="mt-2 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{filteredCustomers.map(c=><option key={c.id} value={c.id}>{c.identification} · {c.full_name}</option>)}</select></label>
+      <label className="sm:col-span-2">Predio<div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={propertySearch} onChange={e=>setPropertySearch(e.target.value)} placeholder="Buscar predio" className="w-full rounded-xl border py-2.5 pl-9 pr-3"/></div><select required value={saleForm.property_id} onChange={e=>{const p=available.find((x:any)=>x.id===e.target.value);setSaleForm({...saleForm,property_id:e.target.value,sale_price:String(p?.total_price||'')})}} className="mt-2 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{filteredAvailableForSale.map((p:any)=><option key={p.id} value={p.id}>{p.code} · {p.block} / {p.lot_number}</option>)}</select></label>
       <label>Precio de venta<input required type="number" step="0.01" value={saleForm.sale_price} onChange={e=>setSaleForm({...saleForm,sale_price:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
       <label>Entrada<input type="number" step="0.01" value={saleForm.down_payment} onChange={e=>setSaleForm({...saleForm,down_payment:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
       <label>Número de cuotas<input required type="number" min="1" value={saleForm.installment_count} onChange={e=>setSaleForm({...saleForm,installment_count:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
