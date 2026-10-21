@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_permission
 from app.models import Customer, ElectronicInvoice, Installment, IssuedDocument, Payment, PaymentAllocation, Property, PropertyStatus, Reservation, Sale, User
-from app.schemas.finance import PaymentCreate, ReservationCreate, SaleCreate
+from app.schemas.finance import InstallmentsUpdate, PaymentCreate, ReservationCreate, SaleCreate
 from app.services.audit import audit
 
 router=APIRouter(prefix="/api",tags=["Ventas y cartera"])
@@ -152,6 +152,62 @@ def installments(sale_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depends(get
     today=date.today()
     return [{"id":str(i.id),"number":i.number,"due_date":i.due_date,"amount":float(i.amount),"paid_amount":float(i.paid_amount),
       "balance":float(i.amount-i.paid_amount),"status":"OVERDUE" if i.due_date<today and i.status!="PAID" else i.status} for i in rows]
+
+@router.put("/sales/{sale_id}/installments")
+def update_installments(sale_id:uuid.UUID,payload:InstallmentsUpdate,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("sales.manage"))):
+    sale=db.get(Sale,sale_id)
+    if not sale or not sale.active:
+        raise HTTPException(404,"Venta no encontrada")
+
+    current_rows=db.scalars(select(Installment).where(Installment.sale_id==sale.id).order_by(Installment.number)).all()
+    current_by_id={str(i.id):i for i in current_rows}
+
+    if len(payload.installments)!=len(current_rows):
+        raise HTTPException(400,"Debe conservarse el mismo número de cuotas")
+
+    sent_ids={x.id for x in payload.installments}
+    if sent_ids!=set(current_by_id.keys()):
+        raise HTTPException(400,"La lista de cuotas no corresponde a esta venta")
+
+    new_total=money(sum((money(x.amount) for x in payload.installments),Decimal("0")))
+    expected=money(sale.sale_price-sale.down_payment)
+    if new_total!=expected:
+        raise HTTPException(
+            400,
+            f"La suma de las cuotas debe ser exactamente {expected:.2f}. Entrada + cuotas debe ser igual al precio de venta {money(sale.sale_price):.2f}"
+        )
+
+    old=[]
+    for item in payload.installments:
+        row=current_by_id[item.id]
+        new_amount=money(item.amount)
+        if new_amount<money(row.paid_amount):
+            raise HTTPException(
+                400,
+                f"La cuota #{row.number} no puede quedar en {new_amount:.2f} porque ya tiene {money(row.paid_amount):.2f} pagado"
+            )
+        old.append({"id":str(row.id),"number":row.number,"due_date":str(row.due_date),"amount":str(row.amount),"paid_amount":str(row.paid_amount)})
+        row.due_date=item.due_date
+        row.amount=new_amount
+        if money(row.paid_amount)>=new_amount:
+            row.status="PAID"
+        elif money(row.paid_amount)>Decimal("0.00"):
+            row.status="PARTIAL"
+        else:
+            row.status="PENDING"
+
+    ordered=sorted(current_rows,key=lambda x:(x.due_date,x.number))
+    sale.first_due_date=ordered[0].due_date
+    sale.financed_amount=expected
+
+    audit(db,current,"INSTALLMENTS_UPDATE","sale",sale.id,{
+        "sale_price":str(sale.sale_price),
+        "down_payment":str(sale.down_payment),
+        "old":old,
+        "new":[{"id":str(i.id),"number":i.number,"due_date":str(i.due_date),"amount":str(i.amount),"paid_amount":str(i.paid_amount)} for i in current_rows]
+    },request)
+    db.commit()
+    return {"ok":True,"message":"Plan de pagos actualizado correctamente"}
 
 @router.post("/payments")
 def create_payment(payload:PaymentCreate,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("payments.manage"))):
