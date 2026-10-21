@@ -15,6 +15,7 @@ export default function SalesPage({permissions}:{permissions:string[]}){
   const [open,setOpen]=useState<'reservation'|'sale'|'installments'|null>(null)
   const [installments,setInstallments]=useState<any[]>([])
   const [selectedSale,setSelectedSale]=useState<any>(null)
+  const [editingInstallments,setEditingInstallments]=useState(false)
   const [runtimeSettings,setRuntimeSettings]=useState<any>({reservation_default_days:3,currency_symbol:'$'})
   const [resForm,setResForm]=useState<any>({customer_id:'',property_id:'',reservation_date:today(),expires_on:'',notes:''})
   const [saleForm,setSaleForm]=useState<any>({customer_id:'',property_id:'',reservation_id:'',sale_price:'',down_payment:'0',installment_count:'12',frequency:'MONTHLY',first_due_date:today(),notes:''})
@@ -61,8 +62,34 @@ export default function SalesPage({permissions}:{permissions:string[]}){
 
   async function showInstallments(s:any){
     setSelectedSale(s)
+    setEditingInstallments(false)
     setInstallments(await apiFetch('/sales/'+s.id+'/installments'))
     setOpen('installments')
+  }
+
+  function updateInstallment(id:string,field:'due_date'|'amount',value:string){
+    setInstallments((rows:any[])=>rows.map((i:any)=>i.id===id?{...i,[field]:field==='amount'?Number(value):value}:i))
+  }
+
+  async function saveInstallments(){
+    if(!selectedSale) return
+    const total=installments.reduce((sum:number,i:any)=>sum+Number(i.amount||0),0)
+    const expected=Number(selectedSale.sale_price)-Number(selectedSale.down_payment||0)
+    if(Math.abs(total-expected)>0.005){
+      alert('La suma de las cuotas debe ser exactamente $ '+expected.toFixed(2)+'. Entrada + cuotas debe ser igual al precio de venta.')
+      return
+    }
+    try{
+      await apiFetch('/sales/'+selectedSale.id+'/installments',{
+        method:'PUT',
+        body:JSON.stringify({installments:installments.map((i:any)=>({id:i.id,due_date:i.due_date,amount:Number(i.amount)}))})
+      })
+      setInstallments(await apiFetch('/sales/'+selectedSale.id+'/installments'))
+      setEditingInstallments(false)
+      await load()
+    }catch(err:any){
+      alert(err?.message||'No fue posible actualizar las cuotas')
+    }
   }
 
   const canRelease=permissions.includes('system.admin')||permissions.includes('reservations.release')
@@ -120,6 +147,6 @@ export default function SalesPage({permissions}:{permissions:string[]}){
       <label>Primera cuota<input required type="date" value={saleForm.first_due_date} onChange={e=>setSaleForm({...saleForm,first_due_date:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
     </div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={()=>setOpen(null)} className="rounded-xl border px-4 py-2.5">Cancelar</button><button className="rounded-xl bg-[#3A6C32] px-5 py-2.5 font-semibold text-white">Confirmar compra</button></div></form></div>}
 
-    {open==='installments'&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6"><div className="flex items-center justify-between"><div><h3 className="text-xl font-semibold">Plan de pagos</h3><p className="mt-1 text-sm text-slate-500">{selectedSale?.customer} · {selectedSale?.property}</p></div><button onClick={()=>setOpen(null)}>✕</button></div><div className="mt-5 overflow-hidden rounded-xl border"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">Vencimiento</th><th className="px-4 py-3">Cuota</th><th className="px-4 py-3">Pagado</th><th className="px-4 py-3">Saldo</th><th className="px-4 py-3">Estado</th></tr></thead><tbody>{installments.map(i=><tr key={i.id} className="border-t"><td className="px-4 py-3">{i.number}</td><td className="px-4 py-3">{i.due_date}</td><td className="px-4 py-3">$ {i.amount.toFixed(2)}</td><td className="px-4 py-3">$ {i.paid_amount.toFixed(2)}</td><td className="px-4 py-3 font-medium">$ {i.balance.toFixed(2)}</td><td className="px-4 py-3"><span className={'inline-flex rounded-full px-2 py-1 text-xs font-semibold '+installmentStatusBadgeClass(i.status)}>{i.status}</span></td></tr>)}</tbody></table></div></div></div>}
+    {open==='installments'&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-6"><div className="flex items-center justify-between gap-4"><div><h3 className="text-xl font-semibold">Plan de pagos</h3><p className="mt-1 text-sm text-slate-500">{selectedSale?.customer} · {selectedSale?.property}</p></div><div className="flex items-center gap-2">{!editingInstallments?<button onClick={()=>setEditingInstallments(true)} className="rounded-xl border px-4 py-2 text-sm font-semibold">Editar cuotas</button>:<><button onClick={()=>{setEditingInstallments(false);showInstallments(selectedSale)}} className="rounded-xl border px-4 py-2 text-sm">Cancelar</button><button onClick={saveInstallments} className="rounded-xl bg-[#3A6C32] px-4 py-2 text-sm font-semibold text-white">Guardar cambios</button></>}<button onClick={()=>setOpen(null)}>✕</button></div></div><div className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Precio venta</p><p className="font-semibold">$ {Number(selectedSale?.sale_price||0).toFixed(2)}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Entrada</p><p className="font-semibold">$ {Number(selectedSale?.down_payment||0).toFixed(2)}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs text-slate-500">Suma cuotas</p><p className={'font-semibold '+(Math.abs(installments.reduce((s:number,i:any)=>s+Number(i.amount||0),0)-(Number(selectedSale?.sale_price||0)-Number(selectedSale?.down_payment||0)))<0.005?'text-emerald-700':'text-red-700')}>$ {installments.reduce((s:number,i:any)=>s+Number(i.amount||0),0).toFixed(2)}</p></div></div><div className="mt-5 overflow-hidden rounded-xl border"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">Vencimiento</th><th className="px-4 py-3">Cuota</th><th className="px-4 py-3">Pagado</th><th className="px-4 py-3">Saldo</th><th className="px-4 py-3">Estado</th></tr></thead><tbody>{installments.map((i:any)=><tr key={i.id} className="border-t"><td className="px-4 py-3">{i.number}</td><td className="px-4 py-3">{editingInstallments?<input type="date" value={i.due_date} onChange={e=>updateInstallment(i.id,'due_date',e.target.value)} className="rounded-lg border px-2 py-1.5"/>:i.due_date}</td><td className="px-4 py-3">{editingInstallments?<input type="number" min={Math.max(0.01,Number(i.paid_amount||0))} step="0.01" value={i.amount} onChange={e=>updateInstallment(i.id,'amount',e.target.value)} className="w-28 rounded-lg border px-2 py-1.5"/>:<span>$ {Number(i.amount).toFixed(2)}</span>}</td><td className="px-4 py-3">$ {Number(i.paid_amount).toFixed(2)}</td><td className="px-4 py-3 font-medium">$ {(Number(i.amount)-Number(i.paid_amount)).toFixed(2)}</td><td className="px-4 py-3"><span className={'inline-flex rounded-full px-2 py-1 text-xs font-semibold '+installmentStatusBadgeClass(i.status)}>{i.status}</span></td></tr>)}</tbody></table></div></div></div>}
   </div>
 }
