@@ -28,3 +28,12 @@ class PaymentCreate(BaseModel):
     payment_method:str
     reference:str|None=None
     notes:str|None=None
+
+
+class InstallmentUpdateItem(BaseModel):
+    id: str
+    due_date: date
+    amount: Decimal = Field(gt=0)
+
+class InstallmentsUpdate(BaseModel):
+    installments: list[InstallmentUpdateItem] = Field(min_length=1)
