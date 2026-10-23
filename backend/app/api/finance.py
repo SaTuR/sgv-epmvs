@@ -6,9 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_permission
-from app.models import Customer, ElectronicInvoice, Installment, IssuedDocument, Payment, PaymentAllocation, Property, PropertyStatus, Reservation, Sale, User
+from app.models import Customer, ElectronicInvoice, Installment, IssuedDocument, Payment, PaymentAllocation, Property, PropertyStatus, Reservation, Sale, SystemSetting, User
 from app.schemas.finance import InstallmentsUpdate, PaymentCreate, ReservationCreate, SaleCreate
 from app.services.audit import audit
+from app.services.electronic_invoice import sri_billing_ready
 
 router=APIRouter(prefix="/api",tags=["Ventas y cartera"])
 
@@ -55,6 +56,8 @@ def cancel_reservation(reservation_id:uuid.UUID,request:Request,db:Session=Depen
 @router.get("/sales")
 def sales(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
     rows=db.scalars(select(Sale).where(Sale.active.is_(True)).order_by(Sale.created_at.desc())).all()
+    cfg=db.scalar(select(SystemSetting).limit(1))
+    sri_ready,_=sri_billing_ready(cfg)
     out=[]
     for s in rows:
         c=db.get(Customer,s.customer_id); p=db.get(Property,s.property_id)
@@ -73,7 +76,7 @@ def sales(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
           "installment_count":s.installment_count,"paid":float(paid),"balance":float(balance),"overdue":float(overdue),
           "invoice_id":str(invoice.id) if invoice else None,
           "invoice_status":invoice.status if invoice else None,
-          "can_generate_invoice":bool(p and p.status.code=="PAID" and balance<=0 and not invoice),
+          "can_generate_invoice":bool(sri_ready and p and p.status.code=="PAID" and balance<=0 and not invoice),
           "can_delete":bool(not invoice and payment_count==0 and document_count==0 and money(s.down_payment)==Decimal("0.00"))})
     return out
 
