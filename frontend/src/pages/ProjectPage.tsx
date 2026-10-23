@@ -1,6 +1,6 @@
 import { FormEvent, MouseEvent, useEffect, useMemo, useState } from 'react'
 import { FileImage, Layers3, MapPinned, Plus, Save, Trash2, Upload, X } from 'lucide-react'
-import { apiFetch } from '../api'
+import { apiBlobUrl, apiFetch } from '../api'
 import { binaryStatusBadgeClass } from '../utils/statusStyles'
 
 type Stage={id:string;name:string;description?:string}
@@ -25,6 +25,8 @@ export default function ProjectPage(){
   const [points,setPoints]=useState<number[][]>([])
   const [error,setError]=useState('')
   const [saving,setSaving]=useState(false)
+  const [mapImageUrl,setMapImageUrl]=useState('')
+  const [mapImageLoading,setMapImageLoading]=useState(false)
 
   const activeMap=useMemo(()=>maps.find(m=>m.is_active)||maps[0]||null,[maps])
 
@@ -74,6 +76,21 @@ export default function ProjectPage(){
     finally{setSaving(false)}
   }
 
+  async function openCommercialMap(){
+    if(!activeMap)return
+    setMapOpen(true);setMapImageLoading(true);setError('')
+    try{
+      if(mapImageUrl) URL.revokeObjectURL(mapImageUrl)
+      setMapImageUrl(await apiBlobUrl('/stage-maps/'+activeMap.id+'/file'))
+    }catch(e:any){setError(e.message||'No fue posible cargar el plano')}
+    finally{setMapImageLoading(false)}
+  }
+
+  function closeCommercialMap(){
+    setMapOpen(false);setEditMode(false);setPoints([]);setSelectedProperty('')
+    if(mapImageUrl){URL.revokeObjectURL(mapImageUrl);setMapImageUrl('')}
+  }
+
   async function deleteZone(propertyId:string){
     if(!activeMap||!confirm('¿Quitar la zona de este lote del plano?'))return
     await apiFetch('/stage-maps/'+activeMap.id+'/zones/'+propertyId,{method:'DELETE'})
@@ -94,7 +111,7 @@ export default function ProjectPage(){
       <section className="rounded-2xl border bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between"><div><h3 className="font-semibold">Plano de {stage.name}</h3><p className="mt-1 text-sm text-slate-500">JPG, PNG, WEBP o PDF. Se conserva el historial de versiones.</p></div><FileImage className="text-[#3A6C32]"/></div>
         <label className="mt-5 flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-8 text-sm font-medium text-[#3A6C32]"><Upload className="h-5 w-5"/>Subir plano<input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" className="hidden" onChange={e=>e.target.files?.[0]&&upload(e.target.files[0])}/></label>
-        {activeMap&&<button onClick={()=>setMapOpen(true)} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#3A6C32] px-4 py-2.5 text-sm font-semibold text-white"><MapPinned className="h-4 w-4"/>Abrir mapa comercial</button>}
+        {activeMap&&<button onClick={openCommercialMap} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#3A6C32] px-4 py-2.5 text-sm font-semibold text-white"><MapPinned className="h-4 w-4"/>Abrir mapa comercial</button>}
         <div className="mt-4 space-y-2">{maps.map(m=><div key={m.id} className="flex items-center justify-between rounded-xl border p-3"><div><p className="text-sm font-medium">{m.name}</p><p className="text-xs text-slate-500">Versión {m.version}</p></div><span className={'inline-flex rounded-full px-2 py-1 text-xs font-semibold '+binaryStatusBadgeClass(m.is_active)}>{m.is_active?'Activo':'Anterior'}</span></div>)}</div>
       </section>
 
@@ -112,7 +129,7 @@ export default function ProjectPage(){
           <div><h3 className="text-lg font-semibold">Mapa comercial · {stage?.name}</h3><p className="text-sm text-slate-500">{zones.length} lotes configurados de {properties.length}</p></div>
           <div className="flex items-center gap-2">
             <button onClick={()=>{setEditMode(!editMode);setPoints([]);setSelectedProperty('')}} className={'rounded-xl px-4 py-2 text-sm font-semibold '+(editMode?'bg-amber-100 text-amber-800':'border')}>{editMode?'Salir de configuración':'Configurar lotes'}</button>
-            <button onClick={()=>setMapOpen(false)} className="rounded-xl border p-2"><X className="h-5 w-5"/></button>
+            <button onClick={closeCommercialMap} className="rounded-xl border p-2"><X className="h-5 w-5"/></button>
           </div>
         </div>
 
@@ -130,8 +147,10 @@ export default function ProjectPage(){
 
         <div className="flex-1 overflow-auto bg-slate-900 p-3">
           <div className="relative mx-auto w-fit max-w-full">
-            <img src={'/api/stage-maps/'+activeMap.id+'/file'} alt={activeMap.name} className="block max-h-[75vh] max-w-full select-none object-contain" draggable={false}/>
-            <svg onClick={addPoint} className={'absolute inset-0 h-full w-full '+(editMode&&selectedProperty?'cursor-crosshair':'')} viewBox="0 0 100 100" preserveAspectRatio="none">
+            {mapImageLoading&&<div className="flex h-[50vh] min-w-[60vw] items-center justify-center text-sm text-slate-300">Cargando plano…</div>}
+            {!mapImageLoading&&mapImageUrl&&<img src={mapImageUrl} alt={activeMap.name} className="block max-h-[75vh] max-w-full select-none object-contain" draggable={false}/>}
+            {!mapImageLoading&&!mapImageUrl&&<div className="flex h-[50vh] min-w-[60vw] items-center justify-center text-sm text-red-300">No fue posible mostrar el plano.</div>}
+            {mapImageUrl&&<svg onClick={addPoint} className={'absolute inset-0 h-full w-full '+(editMode&&selectedProperty?'cursor-crosshair':'')} viewBox="0 0 100 100" preserveAspectRatio="none">
               {zones.map(z=><g key={z.id}>
                 <polygon points={z.polygon_coordinates.map((p:number[])=>p.join(',')).join(' ')} fill={COLORS[z.property.status.code]||'#64748b'} fillOpacity="0.48" stroke={COLORS[z.property.status.code]||'#64748b'} strokeWidth="0.35">
                   <title>{z.property.code} · {z.property.status.name} · $ {Number(z.property.total_price).toFixed(2)}</title>
@@ -139,7 +158,7 @@ export default function ProjectPage(){
                 {z.label_position&&<text x={z.label_position[0]} y={z.label_position[1]} fontSize="1.2" textAnchor="middle" dominantBaseline="middle" fill="white" stroke="black" strokeWidth="0.12" paintOrder="stroke">{z.property.lot_number}</text>}
               </g>)}
               {points.length>0&&<><polyline points={points.map(p=>p.join(',')).join(' ')} fill={points.length>=3?'rgba(250,183,28,.25)':'none'} stroke="#FAB71C" strokeWidth="0.45"/>{points.map((p,i)=><circle key={i} cx={p[0]} cy={p[1]} r="0.55" fill="#FAB71C"/>)}</>}
-            </svg>
+            </svg>}
           </div>
         </div>
 
