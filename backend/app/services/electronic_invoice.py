@@ -67,6 +67,24 @@ def sri_config_complete(row:SystemSetting|None):
         and row.sri_establishment_code and row.sri_emission_point
     )
 
+def sri_billing_ready(row:SystemSetting|None)->tuple[bool,list[str]]:
+    missing=[]
+    if not row:
+        return False,["configuración SRI"]
+    if not row.sri_enabled: missing.append("facturación electrónica activada")
+    if not row.sri_ruc: missing.append("RUC")
+    if not row.sri_business_name: missing.append("razón social")
+    if not row.sri_establishment_code: missing.append("establecimiento")
+    if not row.sri_emission_point: missing.append("punto de emisión")
+    if not row.sri_tax_code: missing.append("código de impuesto")
+    if not row.sri_tax_percentage_code: missing.append("código de porcentaje")
+    if not row.sri_payment_method_code: missing.append("forma de pago SRI")
+    if not row.sri_certificate_path or not row.sri_certificate_password_encrypted:
+        missing.append("certificado de firma electrónica")
+    elif not Path(row.sri_certificate_path).is_file():
+        missing.append("archivo del certificado de firma electrónica")
+    return len(missing)==0,missing
+
 
 def allocate_number(db:Session,invoice:ElectronicInvoice,cfg:SystemSetting)->None:
     if invoice.sequential and invoice.document_number:
