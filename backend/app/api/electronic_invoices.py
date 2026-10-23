@@ -100,6 +100,29 @@ def list_invoices(db:Session=Depends(get_db),_:User=Depends(require_permission("
         })
     return out
 
+@router.delete("/{invoice_id}/attempt")
+def delete_invoice_attempt(invoice_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
+    invoice=db.get(ElectronicInvoice,invoice_id)
+    if not invoice:
+        raise HTTPException(404,"Intento de factura no encontrado")
+    if invoice.status!="PENDING_CONFIG":
+        raise HTTPException(409,"Solo se pueden eliminar intentos pendientes de configuración SRI")
+    if invoice.document_number or invoice.access_key or invoice.authorization_number:
+        raise HTTPException(409,"El intento ya contiene datos fiscales y no puede eliminarse")
+    if invoice.xml_path or invoice.signed_xml_path or invoice.authorization_xml_path:
+        raise HTTPException(409,"El intento ya generó documentos electrónicos y no puede eliminarse")
+    audit(db,current,"EINVOICE_ATTEMPT_DELETE","electronic_invoice",invoice.id,{
+        "sale_id":str(invoice.sale_id),
+        "property_id":str(invoice.property_id),
+        "customer_id":str(invoice.customer_id),
+        "status":invoice.status,
+        "total":str(invoice.total),
+    },request)
+    db.delete(invoice)
+    db.commit()
+    return {"ok":True,"message":"Intento de factura eliminado correctamente"}
+
+
 @router.get("/{invoice_id}")
 def invoice_detail(invoice_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depends(require_permission("invoices.view"))):
     x=db.get(ElectronicInvoice,invoice_id)
