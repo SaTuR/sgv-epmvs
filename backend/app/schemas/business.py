@@ -39,3 +39,9 @@ class PropertyCreate(BaseModel):
 
 class PropertyUpdate(PropertyCreate):
     pass
+
+
+class PropertyMapZoneUpsert(BaseModel):
+    property_id:str
+    polygon_coordinates:list[list[float]]=Field(min_length=3)
+    label_position:list[float]|None=None
