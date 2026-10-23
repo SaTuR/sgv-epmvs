@@ -1,4 +1,4 @@
-import { BarChart3, Building2, FileCheck2, FileText, Home, Landmark, LayoutDashboard, Map, Menu, ReceiptText, Settings, ShieldCheck, Users, WalletCards, X } from 'lucide-react'
+import { BarChart3, Building2, FileCheck2, FileText, Home, Bell, Landmark, LayoutDashboard, Map, Menu, ReceiptText, Settings, ShieldCheck, Users, WalletCards, X } from 'lucide-react'
 
 const items = [
   ['Dashboard', LayoutDashboard, 'dashboard.view'],
@@ -11,6 +11,7 @@ const items = [
   ['Certificados', FileCheck2, 'documents.view'],
   ['Facturación electrónica', FileText, 'invoices.view'],
   ['Reportes', BarChart3, 'reports.view'],
+  ['Notificaciones', Bell, 'system.admin'],
   ['Usuarios y permisos', ShieldCheck, 'users.manage'],
   ['Configuración', Settings, 'system.admin'],
   ['Auditoría', ReceiptText, 'audit.view'],
