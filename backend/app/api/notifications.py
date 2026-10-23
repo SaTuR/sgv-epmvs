@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, require_permission
@@ -53,7 +53,7 @@ def update_settings(payload:NotificationSettingsUpdate,request:Request,db:Sessio
     return serialize_cfg(row)
 
 @router.post("/settings/whatsapp-token")
-def save_whatsapp_token(request:Request,token:str,db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
+def save_whatsapp_token(request:Request,token:str=Form(...),db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
     if not token.strip(): raise HTTPException(400,"Token requerido")
     row=get_cfg(db);row.whatsapp_access_token_encrypted=encrypt_secret(token.strip())
     audit(db,current,"WHATSAPP_TOKEN_UPDATE","notification_settings",row.id,{},request)
@@ -61,7 +61,7 @@ def save_whatsapp_token(request:Request,token:str,db:Session=Depends(get_db),cur
     return {"ok":True,"configured":True}
 
 @router.post("/settings/sms-token")
-def save_sms_token(request:Request,token:str,db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
+def save_sms_token(request:Request,token:str=Form(...),db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
     if not token.strip(): raise HTTPException(400,"Token requerido")
     row=get_cfg(db);row.sms_auth_token_encrypted=encrypt_secret(token.strip())
     audit(db,current,"SMS_TOKEN_UPDATE","notification_settings",row.id,{},request)
