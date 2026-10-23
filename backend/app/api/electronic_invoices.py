@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from app.api.deps import get_db, require_permission
 from app.models import Customer, ElectronicInvoice, Installment, Property, Sale, User
 from app.services.audit import audit
-from app.services.electronic_invoice import ensure_invoice_for_paid_sale, prepare_invoice_xml
+from app.services.electronic_invoice import ensure_invoice_for_paid_sale, prepare_invoice_xml, sri_billing_ready
 from app.services.sri_signing import sign_invoice_xml
 from app.services.sri_client import request_authorization, save_authorization_xml, send_receipt
 from app.services.ride import generate_ride
@@ -40,6 +40,14 @@ def create_invoice_for_paid_sale(sale_id:uuid.UUID,request:Request,db:Session=De
     existing=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==sale.id))
     if existing:
         raise HTTPException(409,"La venta ya tiene una factura electrónica")
+
+    cfg=db.scalar(select(SystemSetting).limit(1))
+    ready,missing=sri_billing_ready(cfg)
+    if not ready:
+        raise HTTPException(
+            409,
+            "No se puede generar la factura. Complete primero la configuración SRI: "+", ".join(missing)
+        )
 
     installments=db.scalars(select(Installment).where(Installment.sale_id==sale.id)).all()
     installment_balance=sum((i.amount-i.paid_amount for i in installments),0)
