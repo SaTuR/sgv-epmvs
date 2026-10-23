@@ -46,3 +46,19 @@ export async function apiDownload(path:string, fallbackName:string){
   a.remove()
   URL.revokeObjectURL(url)
 }
+
+
+export async function apiBlobUrl(path:string){
+  const token=localStorage.getItem('sgv_token')
+  const headers=new Headers()
+  if(token) headers.set('Authorization','Bearer '+token)
+  const response=await fetch(API_URL+path,{headers})
+  if(!response.ok){
+    handleUnauthorized(response,token)
+    const body=await response.json().catch(()=>({}))
+    if(response.status===401&&token) throw new Error('La sesión ha expirado. Inicie sesión nuevamente.')
+    throw new Error(body.detail||'No fue posible cargar el archivo')
+  }
+  const blob=await response.blob()
+  return URL.createObjectURL(blob)
+}
