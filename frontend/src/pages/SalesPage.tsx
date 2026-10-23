@@ -21,6 +21,11 @@ export default function SalesPage({permissions}:{permissions:string[]}){
   const [saleForm,setSaleForm]=useState<any>({customer_id:'',property_id:'',reservation_id:'',sale_price:'',down_payment:'0',installment_count:'12',frequency:'MONTHLY',first_due_date:today(),notes:''})
   const [customerSearch,setCustomerSearch]=useState('')
   const [propertySearch,setPropertySearch]=useState('')
+  const [reservationFilter,setReservationFilter]=useState('')
+  const [reservationFrom,setReservationFrom]=useState('')
+  const [reservationTo,setReservationTo]=useState('')
+  const [saleFilter,setSaleFilter]=useState('')
+  const [saleStatusFilter,setSaleStatusFilter]=useState('ALL')
 
   async function load(){
     const [c,p,r,s]=await Promise.all([apiFetch('/customers'),apiFetch('/properties'),apiFetch('/reservations'),apiFetch('/sales')])
@@ -39,6 +44,21 @@ export default function SalesPage({permissions}:{permissions:string[]}){
     .filter((p:any)=>!propertyTerm || [p.code,p.block,p.lot_number,p.cadastral_key,p.location_reference].some(v=>String(v??'').toLocaleLowerCase('es').includes(propertyTerm)))
   const filteredAvailableForSale=available
     .filter((p:any)=>!propertyTerm || [p.code,p.block,p.lot_number,p.cadastral_key,p.location_reference].some(v=>String(v??'').toLocaleLowerCase('es').includes(propertyTerm)))
+
+  const reservationTerm=reservationFilter.trim().toLocaleLowerCase('es')
+  const filteredReservations=reservations.filter((r:any)=>{
+    const matchesText=!reservationTerm || [r.customer,r.property].some(v=>String(v??'').toLocaleLowerCase('es').includes(reservationTerm))
+    const matchesFrom=!reservationFrom || String(r.reservation_date||'')>=reservationFrom
+    const matchesTo=!reservationTo || String(r.reservation_date||'')<=reservationTo
+    return matchesText&&matchesFrom&&matchesTo
+  })
+
+  const saleTerm=saleFilter.trim().toLocaleLowerCase('es')
+  const filteredSales=sales.filter((s:any)=>{
+    const matchesText=!saleTerm || [s.customer,s.property].some(v=>String(v??'').toLocaleLowerCase('es').includes(saleTerm))
+    const matchesStatus=saleStatusFilter==='ALL' || s.property_status===saleStatusFilter
+    return matchesText&&matchesStatus
+  })
 
   async function saveReservation(e:FormEvent){
     e.preventDefault()
@@ -129,8 +149,36 @@ export default function SalesPage({permissions}:{permissions:string[]}){
       <button onClick={()=>setTab('sales')} className={'rounded-xl px-4 py-2 text-sm font-semibold '+(tab==='sales'?'bg-[#3A6C32] text-white':'border bg-white')}>Compras confirmadas</button>
     </div>
 
-    {tab==='reservations'?<div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Predio</th><th className="px-5 py-3">Reserva</th><th className="px-5 py-3">Vence</th><th></th></tr></thead><tbody>{reservations.map(r=><tr key={r.id} className="border-t"><td className="px-5 py-4 font-medium">{r.customer}</td><td className="px-5 py-4">{r.property}</td><td className="px-5 py-4">{r.reservation_date}</td><td className="px-5 py-4">{r.expires_on||'-'}</td><td className="px-5 py-4 text-right"><div className="flex justify-end gap-2"><button onClick={()=>fromReservation(r)} className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">Confirmar compra</button>{canRelease&&<button onClick={()=>releaseReservation(r)} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">Liberar solar</button>}</div></td></tr>)}</tbody></table>{!reservations.length&&<div className="py-14 text-center text-slate-400"><CalendarClock className="mx-auto h-10 w-10"/><p className="mt-3">No hay reservas activas.</p></div>}</div>
-    :<div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Predio</th><th className="px-5 py-3">Precio</th><th className="px-5 py-3">Pagado</th><th className="px-5 py-3">Saldo</th><th className="px-5 py-3">Estado</th><th className="px-5 py-3 text-right">Documentos</th></tr></thead><tbody>{sales.map(s=><tr key={s.id} className="border-t"><td className="px-5 py-4 font-medium">{s.customer}</td><td className="px-5 py-4">{s.property}</td><td className="px-5 py-4">$ {s.sale_price.toFixed(2)}</td><td className="px-5 py-4 text-emerald-700">$ {s.paid.toFixed(2)}</td><td className="px-5 py-4 font-semibold">$ {s.balance.toFixed(2)}</td><td className="px-5 py-4"><span className="text-xs font-semibold">{s.property_status==='INVOICED'?'Facturado':s.property_status==='PAID'?'Pagado':s.property_status==='PAYING'?'En proceso de pago':s.property_status}</span></td><td className="px-5 py-4"><div className="flex flex-wrap justify-end gap-2">{canCreateInvoice&&s.can_generate_invoice&&<button onClick={()=>generateInvoice(s)} className="inline-flex items-center gap-1 rounded-lg bg-[#3A6C32] px-3 py-2 text-xs font-semibold text-white"><ReceiptText className="h-4 w-4"/>Generar factura</button>}{s.invoice_id&&<span className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Factura creada</span>}<button onClick={()=>showInstallments(s)} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold"><Eye className="h-4 w-4"/>Cuotas</button><button onClick={()=>apiDownload('/sales/'+s.id+'/statement.pdf','estado-cuenta.pdf')} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-[#3A6C32]"><FileText className="h-4 w-4"/>Estado</button><button onClick={()=>apiDownload('/sales/'+s.id+'/payments-certificate.pdf','certificado-pagos.pdf')} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-[#3A6C32]"><FileCheck2 className="h-4 w-4"/>Certificado</button>{canDeleteSale&&s.can_delete&&<button onClick={()=>deleteSale(s)} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><Trash2 className="h-4 w-4"/>Eliminar</button>}</div></td></tr>)}</tbody></table>{!sales.length&&<div className="py-14 text-center text-slate-400"><ShoppingCart className="mx-auto h-10 w-10"/><p className="mt-3">No hay compras confirmadas.</p></div>}</div>}
+    {tab==='reservations'?<>
+    <div className="mt-4 grid gap-3 rounded-2xl border bg-white p-4 shadow-sm md:grid-cols-[1fr_auto_auto_auto] md:items-end">
+      <label className="text-sm font-medium text-slate-700">Buscar
+        <div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={reservationFilter} onChange={e=>setReservationFilter(e.target.value)} placeholder="Cliente o predio" className="w-full rounded-xl border py-2.5 pl-9 pr-3 outline-none focus:border-[#52AD56] focus:ring-2 focus:ring-[#52AD56]/20"/></div>
+      </label>
+      <label className="text-sm font-medium text-slate-700">Desde<input type="date" value={reservationFrom} onChange={e=>setReservationFrom(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+      <label className="text-sm font-medium text-slate-700">Hasta<input type="date" value={reservationTo} onChange={e=>setReservationTo(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+      <button type="button" onClick={()=>{setReservationFilter('');setReservationFrom('');setReservationTo('')}} className="rounded-xl border px-4 py-2.5 text-sm font-semibold text-slate-600">Limpiar</button>
+      <p className="text-xs text-slate-400 md:col-span-4">{filteredReservations.length} de {reservations.length} reserva(s)</p>
+    </div>
+    <div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Predio</th><th className="px-5 py-3">Reserva</th><th className="px-5 py-3">Vence</th><th></th></tr></thead><tbody>{filteredReservations.map(r=><tr key={r.id} className="border-t"><td className="px-5 py-4 font-medium">{r.customer}</td><td className="px-5 py-4">{r.property}</td><td className="px-5 py-4">{r.reservation_date}</td><td className="px-5 py-4">{r.expires_on||'-'}</td><td className="px-5 py-4 text-right"><div className="flex justify-end gap-2"><button onClick={()=>fromReservation(r)} className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">Confirmar compra</button>{canRelease&&<button onClick={()=>releaseReservation(r)} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">Liberar solar</button>}</div></td></tr>)}</tbody></table>{!filteredReservations.length&&<div className="py-14 text-center text-slate-400"><CalendarClock className="mx-auto h-10 w-10"/><p className="mt-3">No hay reservas activas.</p></div></>}</div></>
+    :<>
+    <div className="mt-4 grid gap-3 rounded-2xl border bg-white p-4 shadow-sm md:grid-cols-[1fr_260px_auto] md:items-end">
+      <label className="text-sm font-medium text-slate-700">Buscar
+        <div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={saleFilter} onChange={e=>setSaleFilter(e.target.value)} placeholder="Cliente o predio" className="w-full rounded-xl border py-2.5 pl-9 pr-3 outline-none focus:border-[#52AD56] focus:ring-2 focus:ring-[#52AD56]/20"/></div>
+      </label>
+      <label className="text-sm font-medium text-slate-700">Estado
+        <select value={saleStatusFilter} onChange={e=>setSaleStatusFilter(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5">
+          <option value="ALL">Todos</option>
+          <option value="CONFIRMED">Compra confirmada</option>
+          <option value="PAYING">En proceso de pago</option>
+          <option value="PAID">Pagado</option>
+          <option value="INVOICED">Facturado</option>
+          <option value="AWARDED">Adjudicado</option>
+        </select>
+      </label>
+      <button type="button" onClick={()=>{setSaleFilter('');setSaleStatusFilter('ALL')}} className="rounded-xl border px-4 py-2.5 text-sm font-semibold text-slate-600">Limpiar</button>
+      <p className="text-xs text-slate-400 md:col-span-3">{filteredSales.length} de {sales.length} compra(s)</p>
+    </div>
+    <div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm"><table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Predio</th><th className="px-5 py-3">Precio</th><th className="px-5 py-3">Pagado</th><th className="px-5 py-3">Saldo</th><th className="px-5 py-3">Estado</th><th className="px-5 py-3 text-right">Documentos</th></tr></thead><tbody>{filteredSales.map(s=><tr key={s.id} className="border-t"><td className="px-5 py-4 font-medium">{s.customer}</td><td className="px-5 py-4">{s.property}</td><td className="px-5 py-4">$ {s.sale_price.toFixed(2)}</td><td className="px-5 py-4 text-emerald-700">$ {s.paid.toFixed(2)}</td><td className="px-5 py-4 font-semibold">$ {s.balance.toFixed(2)}</td><td className="px-5 py-4"><span className="text-xs font-semibold">{s.property_status==='INVOICED'?'Facturado':s.property_status==='PAID'?'Pagado':s.property_status==='PAYING'?'En proceso de pago':s.property_status}</span></td><td className="px-5 py-4"><div className="flex flex-wrap justify-end gap-2">{canCreateInvoice&&s.can_generate_invoice&&<button onClick={()=>generateInvoice(s)} className="inline-flex items-center gap-1 rounded-lg bg-[#3A6C32] px-3 py-2 text-xs font-semibold text-white"><ReceiptText className="h-4 w-4"/>Generar factura</button>}{s.invoice_id&&<span className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Factura creada</span>}<button onClick={()=>showInstallments(s)} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold"><Eye className="h-4 w-4"/>Cuotas</button><button onClick={()=>apiDownload('/sales/'+s.id+'/statement.pdf','estado-cuenta.pdf')} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-[#3A6C32]"><FileText className="h-4 w-4"/>Estado</button><button onClick={()=>apiDownload('/sales/'+s.id+'/payments-certificate.pdf','certificado-pagos.pdf')} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-[#3A6C32]"><FileCheck2 className="h-4 w-4"/>Certificado</button>{canDeleteSale&&s.can_delete&&<button onClick={()=>deleteSale(s)} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><Trash2 className="h-4 w-4"/>Eliminar</button>}</div></td></tr>)}</tbody></table>{!filteredSales.length&&<div className="py-14 text-center text-slate-400"><ShoppingCart className="mx-auto h-10 w-10"/><p className="mt-3">No hay compras confirmadas.</p></div>}</div>}
 
     {open==='reservation'&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><form onSubmit={saveReservation} className="w-full max-w-xl rounded-2xl bg-white p-6"><h3 className="text-xl font-semibold">Nueva reserva</h3><div className="mt-5 grid gap-4">
       <label>Cliente<div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="Buscar por cédula, nombre, correo o celular" className="w-full rounded-xl border py-2.5 pl-9 pr-3 outline-none focus:border-[#52AD56] focus:ring-2 focus:ring-[#52AD56]/20"/></div><select required value={resForm.customer_id} onChange={e=>setResForm({...resForm,customer_id:e.target.value})} className="mt-2 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{filteredCustomers.map(c=><option key={c.id} value={c.id}>{c.identification} · {c.full_name}</option>)}</select>{customerSearch&&<span className="mt-1 block text-xs text-slate-400">{filteredCustomers.length} cliente(s) encontrados</span>}</label>
