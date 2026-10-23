@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Download, FileText, Mail, RefreshCw, Send, ShieldCheck } from 'lucide-react'
+import { CheckCircle2, Download, FileText, Mail, RefreshCw, Send, ShieldCheck, Trash2 } from 'lucide-react'
 import { apiDownload, apiFetch } from '../api'
 
 export default function ElectronicInvoicesPage(){
@@ -91,6 +91,16 @@ export default function ElectronicInvoicesPage(){
     finally{setAction('')}
   }
 
+  async function deleteAttempt(r:any){
+    if(!confirm('¿Eliminar este intento de factura de '+r.customer+' / '+r.property+'? Solo se eliminará el intento no emitido.')) return
+    setAction(r.id);setError('')
+    try{
+      await apiFetch('/electronic-invoices/'+r.id+'/attempt',{method:'DELETE'})
+      await load()
+    }catch(e:any){setError(e.message||'No fue posible eliminar el intento')}
+    finally{setAction('')}
+  }
+
   function badge(status:string){
     if(status==='AUTHORIZED')return 'border-emerald-200 bg-emerald-50 text-emerald-700'
     if(status==='SENT')return 'border-cyan-200 bg-cyan-50 text-cyan-700'
@@ -142,6 +152,7 @@ export default function ElectronicInvoicesPage(){
               {r.status==='AUTHORIZED'&&<button type="button" disabled={action===r.id} onClick={()=>downloadAuthorizedXml(r.id)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"><Download className="h-3.5 w-3.5"/>XML autorizado</button>}
               {r.status==='AUTHORIZED'&&<button type="button" disabled={action===r.id} onClick={()=>downloadRide(r.id)} className="inline-flex items-center gap-1.5 rounded-lg bg-[#3A6C32] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><FileText className="h-3.5 w-3.5"/>RIDE</button>}
               {r.status==='AUTHORIZED'&&<button type="button" disabled={action===r.id} onClick={()=>emailInvoice(r.id)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-50"><Mail className="h-3.5 w-3.5"/>Enviar correo</button>}
+              {r.status==='PENDING_CONFIG'&&!r.document_number&&!r.access_key&&!r.authorization_number&&<button type="button" disabled={action===r.id} onClick={()=>deleteAttempt(r)} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5"/>Eliminar intento</button>}
             </div></td>
           </tr>)}</tbody>
         </table>
