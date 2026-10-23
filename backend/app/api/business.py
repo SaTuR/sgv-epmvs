@@ -1,14 +1,16 @@
 import uuid
+import json
 from decimal import Decimal
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_permission
 from app.config import settings
-from app.models import Block, Customer, Project, ProjectStage, Property, PropertyStatus, Reservation, Sale, StageMap, User
-from app.schemas.business import BlockCreate, CustomerCreate, CustomerUpdate, PropertyCreate, PropertyUpdate
+from app.models import Block, Customer, Project, ProjectStage, Property, PropertyMapZone, PropertyStatus, Reservation, Sale, StageMap, User
+from app.schemas.business import BlockCreate, CustomerCreate, CustomerUpdate, PropertyCreate, PropertyMapZoneUpsert, PropertyUpdate
 from app.services.audit import audit
 
 router = APIRouter(prefix="/api", tags=["Gestión comercial"])
@@ -77,6 +79,68 @@ async def upload_map(stage_id: uuid.UUID, file: UploadFile=File(...), db:Session
     item=StageMap(stage_id=stage_id,name=file.filename or filename,file_path=f"plans/{stage_id}/{filename}",file_type=file.content_type or ext,version=current+1,is_active=True)
     db.add(item); db.commit(); db.refresh(item)
     return {"id":str(item.id),"name":item.name,"version":item.version,"is_active":item.is_active}
+
+@router.get("/stage-maps/{map_id}/file")
+def stage_map_file(map_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depends(get_current_user)):
+    item=db.get(StageMap,map_id)
+    if not item: raise HTTPException(404,"Plano no encontrado")
+    path=Path(settings.upload_path)/item.file_path
+    if not path.is_file(): raise HTTPException(404,"Archivo de plano no encontrado")
+    return FileResponse(path,media_type=item.file_type or None,filename=item.name)
+
+@router.get("/stage-maps/{map_id}/zones")
+def stage_map_zones(map_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depends(get_current_user)):
+    item=db.get(StageMap,map_id)
+    if not item: raise HTTPException(404,"Plano no encontrado")
+    rows=db.scalars(select(PropertyMapZone).where(PropertyMapZone.stage_map_id==map_id)).all()
+    out=[]
+    for z in rows:
+        p=db.get(Property,z.property_id)
+        if not p: continue
+        out.append({
+            "id":str(z.id),"stage_map_id":str(z.stage_map_id),"property_id":str(z.property_id),
+            "polygon_coordinates":json.loads(z.polygon_coordinates),
+            "label_position":json.loads(z.label_position) if z.label_position else None,
+            "property":{"code":p.code,"lot_number":p.lot_number,"block":p.block.name,
+                        "status":{"code":p.status.code,"name":p.status.name},
+                        "area_m2":float(p.area_m2),"total_price":float(p.total_price)}
+        })
+    return out
+
+@router.put("/stage-maps/{map_id}/zones")
+def upsert_stage_map_zone(map_id:uuid.UUID,payload:PropertyMapZoneUpsert,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("projects.manage"))):
+    item=db.get(StageMap,map_id)
+    if not item: raise HTTPException(404,"Plano no encontrado")
+    prop=db.get(Property,uuid.UUID(payload.property_id))
+    if not prop: raise HTTPException(404,"Predio no encontrado")
+    if prop.block.stage_id!=item.stage_id:
+        raise HTTPException(400,"El predio no pertenece a la etapa de este plano")
+    points=payload.polygon_coordinates
+    if any(len(p)!=2 or p[0]<0 or p[0]>100 or p[1]<0 or p[1]>100 for p in points):
+        raise HTTPException(400,"Las coordenadas del polígono deben estar entre 0 y 100")
+    zone=db.scalar(select(PropertyMapZone).where(PropertyMapZone.property_id==prop.id))
+    if zone and zone.stage_map_id!=item.id:
+        db.delete(zone);db.flush();zone=None
+    if not zone:
+        zone=PropertyMapZone(stage_map_id=item.id,property_id=prop.id,polygon_coordinates="[]")
+        db.add(zone)
+    zone.stage_map_id=item.id
+    zone.polygon_coordinates=json.dumps(points)
+    zone.label_position=json.dumps(payload.label_position) if payload.label_position else None
+    db.flush()
+    audit(db,current,"PROPERTY_MAP_ZONE_UPSERT","property_map_zone",zone.id,{
+        "stage_map_id":str(item.id),"property_id":str(prop.id),"property_code":prop.code,"points":len(points)
+    },request)
+    db.commit();db.refresh(zone)
+    return {"id":str(zone.id),"ok":True}
+
+@router.delete("/stage-maps/{map_id}/zones/{property_id}")
+def delete_stage_map_zone(map_id:uuid.UUID,property_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("projects.manage"))):
+    zone=db.scalar(select(PropertyMapZone).where(PropertyMapZone.stage_map_id==map_id,PropertyMapZone.property_id==property_id))
+    if not zone: raise HTTPException(404,"Zona no encontrada")
+    audit(db,current,"PROPERTY_MAP_ZONE_DELETE","property_map_zone",zone.id,{"stage_map_id":str(map_id),"property_id":str(property_id)},request)
+    db.delete(zone);db.commit()
+    return {"ok":True}
 
 @router.get("/stages/{stage_id}/blocks")
 def list_blocks(stage_id: uuid.UUID, db:Session=Depends(get_db), _:User=Depends(get_current_user)):
