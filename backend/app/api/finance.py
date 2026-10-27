@@ -236,6 +236,76 @@ def create_payment(payload:PaymentCreate,request:Request,db:Session=Depends(get_
     db.commit(); db.refresh(payment)
     return {"id":str(payment.id)}
 
+
+@router.delete("/payments/{payment_id}")
+def delete_payment(
+    payment_id:uuid.UUID,
+    request:Request,
+    db:Session=Depends(get_db),
+    current:User=Depends(require_permission("payments.delete"))
+):
+    payment=db.get(Payment,payment_id)
+    if not payment or payment.status!="POSTED":
+        raise HTTPException(404,"Pago no encontrado")
+
+    sale=db.get(Sale,payment.sale_id)
+    if not sale or not sale.active:
+        raise HTTPException(409,"La venta asociada no está disponible")
+
+    invoice=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==sale.id))
+    if invoice:
+        raise HTTPException(409,"No se puede eliminar el pago porque la venta ya tiene factura electrónica asociada")
+
+    allocations=db.scalars(
+        select(PaymentAllocation).where(PaymentAllocation.payment_id==payment.id)
+    ).all()
+
+    snapshot=[]
+    for allocation in allocations:
+        installment=db.get(Installment,allocation.installment_id)
+        if not installment:
+            raise HTTPException(409,"El pago tiene asignaciones inconsistentes y no puede eliminarse automáticamente")
+
+        new_paid=money(installment.paid_amount-allocation.amount)
+        if new_paid<Decimal("0.00"):
+            raise HTTPException(409,"La eliminación produciría un valor pagado negativo en una cuota")
+
+        snapshot.append({
+            "installment_id":str(installment.id),
+            "installment_number":installment.number,
+            "amount":str(allocation.amount),
+            "paid_before":str(installment.paid_amount),
+            "paid_after":str(new_paid),
+        })
+
+        installment.paid_amount=new_paid
+        installment.status="PENDING" if new_paid<=0 else ("PARTIAL" if new_paid<installment.amount else "PAID")
+
+    prop=db.get(Property,sale.property_id)
+    all_installments=db.scalars(
+        select(Installment).where(Installment.sale_id==sale.id)
+    ).all()
+
+    if prop:
+        if all_installments and all(i.status=="PAID" for i in all_installments):
+            prop.status_id=prop_status(db,"PAID").id
+        elif sale.financed_amount>0:
+            prop.status_id=prop_status(db,"PAYING").id
+
+    audit(db,current,"PAYMENT_DELETE","payment",payment.id,{
+        "sale_id":str(sale.id),
+        "property_id":str(sale.property_id),
+        "payment_date":str(payment.payment_date),
+        "amount":str(payment.amount),
+        "payment_method":payment.payment_method,
+        "reference":payment.reference,
+        "allocations":snapshot,
+    },request)
+
+    db.delete(payment)
+    db.commit()
+    return {"ok":True,"message":"Pago eliminado y cuotas recalculadas correctamente"}
+
 @router.get("/payments")
 def payments(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
     rows=db.scalars(select(Payment).where(Payment.status=="POSTED").order_by(Payment.payment_date.desc(),Payment.created_at.desc())).all()
