@@ -40,7 +40,7 @@ export default function App(){
     if(active==='Proyecto San Joaquín')return <ProjectPage/>
     if(active==='Predios')return <PropertiesPage/>
     if(active==='Reservas y ventas')return <SalesPage permissions={user?.permissions||[]}/>
-    if(active==='Pagos')return <PaymentsPage/>
+    if(active==='Pagos')return <PaymentsPage permissions={user?.permissions||[]}/>
     if(active==='Cartera')return <ReceivablesPage/>
     if(active==='Certificados')return <CertificatesPage/>
     if(active==='Facturación electrónica')return <ElectronicInvoicesPage/>
