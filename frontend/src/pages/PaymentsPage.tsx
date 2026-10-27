@@ -1,14 +1,15 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { CircleDollarSign, FileDown, Plus } from 'lucide-react'
+import { CircleDollarSign, FileDown, Plus, Trash2 } from 'lucide-react'
 import { apiDownload, apiFetch } from '../api'
 
 const today=()=>new Date().toISOString().slice(0,10)
 
-export default function PaymentsPage(){
+export default function PaymentsPage({permissions}:{permissions:string[]}){
   const [sales,setSales]=useState<any[]>([])
   const [payments,setPayments]=useState<any[]>([])
   const [open,setOpen]=useState(false)
   const [form,setForm]=useState<any>({sale_id:'',payment_date:today(),amount:'',payment_method:'TRANSFERENCIA',reference:'',notes:''})
+  const canDelete=permissions.includes('system.admin')||permissions.includes('payments.delete')
   async function load(){const [s,p]=await Promise.all([apiFetch('/sales'),apiFetch('/payments')]);setSales(s);setPayments(p)}
   useEffect(()=>{load()},[])
   async function save(e:FormEvent){
@@ -19,6 +20,16 @@ export default function PaymentsPage(){
   async function receipt(p:any){
     await apiDownload('/payments/'+p.id+'/receipt.pdf','comprobante-pago.pdf')
   }
+
+  async function deletePayment(p:any){
+    if(!confirm('¿Eliminar el pago de $ '+Number(p.amount).toFixed(2)+' de '+p.customer+' para el predio '+p.property+'?\n\nSe revertirá el valor aplicado a las cuotas y la acción quedará registrada en auditoría.')) return
+    try{
+      await apiFetch('/payments/'+p.id,{method:'DELETE'})
+      await load()
+    }catch(err:any){
+      alert(err?.message||'No fue posible eliminar el pago')
+    }
+  }
   return <div>
     <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div><p className="text-sm font-semibold text-[#52AD56]">Recaudación</p><h2 className="mt-1 text-2xl font-semibold">Pagos</h2><p className="mt-1 text-sm text-slate-500">Pagos aplicados automáticamente a las cuotas más antiguas pendientes.</p></div>
@@ -28,7 +39,7 @@ export default function PaymentsPage(){
     <div className="mt-6 overflow-hidden rounded-2xl border bg-white shadow-sm">
       <div className="overflow-x-auto"><table className="min-w-full text-sm">
         <thead className="bg-slate-50 text-left text-slate-500"><tr><th className="px-5 py-3">Fecha</th><th className="px-5 py-3">Cliente</th><th className="px-5 py-3">Predio</th><th className="px-5 py-3">Forma</th><th className="px-5 py-3">Referencia</th><th className="px-5 py-3 text-right">Valor</th><th></th></tr></thead>
-        <tbody>{payments.map(p=><tr key={p.id} className="border-t"><td className="px-5 py-4">{p.payment_date}</td><td className="px-5 py-4 font-medium">{p.customer}</td><td className="px-5 py-4">{p.property}</td><td className="px-5 py-4">{p.payment_method}</td><td className="px-5 py-4">{p.reference||'-'}</td><td className="px-5 py-4 text-right font-semibold text-emerald-700">$ {p.amount.toFixed(2)}</td><td className="px-5 py-4 text-right"><button onClick={()=>receipt(p)} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-[#3A6C32]"><FileDown className="h-4 w-4"/>PDF</button></td></tr>)}</tbody>
+        <tbody>{payments.map(p=><tr key={p.id} className="border-t"><td className="px-5 py-4">{p.payment_date}</td><td className="px-5 py-4 font-medium">{p.customer}</td><td className="px-5 py-4">{p.property}</td><td className="px-5 py-4">{p.payment_method}</td><td className="px-5 py-4">{p.reference||'-'}</td><td className="px-5 py-4 text-right font-semibold text-emerald-700">$ {p.amount.toFixed(2)}</td><td className="px-5 py-4 text-right"><div className="flex justify-end gap-2"><button onClick={()=>receipt(p)} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-[#3A6C32]"><FileDown className="h-4 w-4"/>PDF</button>{canDelete&&<button onClick={()=>deletePayment(p)} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"><Trash2 className="h-4 w-4"/>Eliminar</button>}</div></td></tr>)}</tbody>
       </table>{!payments.length&&<div className="py-14 text-center text-slate-400"><CircleDollarSign className="mx-auto h-10 w-10"/><p className="mt-3">No hay pagos registrados.</p></div>}</div>
     </div>
 
