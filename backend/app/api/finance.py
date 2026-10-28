@@ -247,7 +247,7 @@ def update_down_payment(
             "mode":payload.mode,
             "installments":[
                 {"id":str(i.id),"number":i.number,"due_date":str(i.due_date),"amount":str(i.amount),"paid_amount":str(i.paid_amount)}
-                for i in rows if i in db
+                for i in rows
             ],
         },
     },request)
