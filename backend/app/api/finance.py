@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_permission
 from app.models import Customer, ElectronicInvoice, Installment, IssuedDocument, Payment, PaymentAllocation, Property, PropertyStatus, Reservation, Sale, SystemSetting, User
-from app.schemas.finance import InstallmentsUpdate, PaymentCreate, ReservationCreate, SaleCreate
+from app.schemas.finance import DownPaymentUpdate, InstallmentsUpdate, PaymentCreate, ReservationCreate, SaleCreate
 from app.services.audit import audit
 from app.services.electronic_invoice import sri_billing_ready
 
@@ -155,6 +155,104 @@ def installments(sale_id:uuid.UUID,db:Session=Depends(get_db),_:User=Depends(get
     today=date.today()
     return [{"id":str(i.id),"number":i.number,"due_date":i.due_date,"amount":float(i.amount),"paid_amount":float(i.paid_amount),
       "balance":float(i.amount-i.paid_amount),"status":"OVERDUE" if i.due_date<today and i.status!="PAID" else i.status} for i in rows]
+
+@router.put("/sales/{sale_id}/down-payment")
+def update_down_payment(
+    sale_id:uuid.UUID,
+    payload:DownPaymentUpdate,
+    request:Request,
+    db:Session=Depends(get_db),
+    current:User=Depends(require_permission("sales.manage"))
+):
+    sale=db.get(Sale,sale_id)
+    if not sale or not sale.active:
+        raise HTTPException(404,"Venta no encontrada")
+
+    invoice=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==sale.id))
+    if invoice:
+        raise HTTPException(409,"No se puede corregir la entrada porque la venta ya tiene factura electrónica asociada")
+
+    new_down=money(payload.down_payment)
+    if new_down>money(sale.sale_price):
+        raise HTTPException(400,"La entrada no puede superar el precio de venta")
+
+    rows=db.scalars(select(Installment).where(Installment.sale_id==sale.id).order_by(Installment.number)).all()
+    financed=money(sale.sale_price-new_down)
+    old_snapshot={
+        "down_payment":str(sale.down_payment),
+        "financed_amount":str(sale.financed_amount),
+        "installments":[
+            {"id":str(i.id),"number":i.number,"due_date":str(i.due_date),"amount":str(i.amount),"paid_amount":str(i.paid_amount)}
+            for i in rows
+        ],
+    }
+
+    if financed==Decimal("0.00"):
+        if any(money(i.paid_amount)>Decimal("0.00") for i in rows):
+            raise HTTPException(409,"No se puede llevar el financiado a cero porque ya existen pagos aplicados a cuotas")
+        for i in rows:
+            db.delete(i)
+        sale.installment_count=0
+    elif not rows:
+        raise HTTPException(409,"La venta no tiene cuotas para redistribuir")
+    elif payload.mode=="AUTO":
+        base=money(financed/Decimal(len(rows)))
+        running=Decimal("0.00")
+        for idx,row in enumerate(rows):
+            amount=base if idx<len(rows)-1 else money(financed-running)
+            if amount<money(row.paid_amount):
+                raise HTTPException(
+                    409,
+                    f"La redistribución automática dejaría la cuota #{row.number} por debajo de lo ya pagado. Use ajuste manual."
+                )
+            row.amount=amount
+            running=money(running+amount)
+            row.status="PAID" if money(row.paid_amount)>=amount else ("PARTIAL" if money(row.paid_amount)>0 else "PENDING")
+    else:
+        items=payload.installments or []
+        if len(items)!=len(rows):
+            raise HTTPException(400,"Para ajuste manual debe enviar todas las cuotas")
+        current_by_id={str(i.id):i for i in rows}
+        if {x.id for x in items}!=set(current_by_id.keys()):
+            raise HTTPException(400,"La lista de cuotas no corresponde a esta venta")
+        total=money(sum((money(x.amount) for x in items),Decimal("0.00")))
+        if total!=financed:
+            raise HTTPException(400,f"La suma de cuotas debe ser exactamente {financed:.2f}")
+        for item in items:
+            row=current_by_id[item.id]
+            amount=money(item.amount)
+            if amount<money(row.paid_amount):
+                raise HTTPException(400,f"La cuota #{row.number} no puede ser menor a lo ya pagado")
+            row.due_date=item.due_date
+            row.amount=amount
+            row.status="PAID" if money(row.paid_amount)>=amount else ("PARTIAL" if money(row.paid_amount)>0 else "PENDING")
+
+    sale.down_payment=new_down
+    sale.financed_amount=financed
+    if financed>0:
+        sale.installment_count=len(rows)
+
+    prop=db.get(Property,sale.property_id)
+    if prop:
+        if financed==Decimal("0.00") or (rows and all(i.status=="PAID" for i in rows)):
+            prop.status_id=prop_status(db,"PAID").id
+        else:
+            prop.status_id=prop_status(db,"PAYING").id
+
+    audit(db,current,"DOWN_PAYMENT_UPDATE","sale",sale.id,{
+        "old":old_snapshot,
+        "new":{
+            "down_payment":str(sale.down_payment),
+            "financed_amount":str(sale.financed_amount),
+            "mode":payload.mode,
+            "installments":[
+                {"id":str(i.id),"number":i.number,"due_date":str(i.due_date),"amount":str(i.amount),"paid_amount":str(i.paid_amount)}
+                for i in rows if i in db
+            ],
+        },
+    },request)
+    db.commit()
+    return {"ok":True,"message":"Entrada y plan de pagos actualizados correctamente"}
 
 @router.put("/sales/{sale_id}/installments")
 def update_installments(sale_id:uuid.UUID,payload:InstallmentsUpdate,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("sales.manage"))):
