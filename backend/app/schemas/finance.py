@@ -37,3 +37,9 @@ class InstallmentUpdateItem(BaseModel):
 
 class InstallmentsUpdate(BaseModel):
     installments: list[InstallmentUpdateItem] = Field(min_length=1)
+
+
+class DownPaymentUpdate(BaseModel):
+    down_payment: Decimal = Field(ge=0)
+    mode: str = Field(default="AUTO", pattern="^(AUTO|MANUAL)$")
+    installments: list[InstallmentUpdateItem] | None = None
