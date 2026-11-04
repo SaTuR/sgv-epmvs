@@ -118,9 +118,10 @@ def payment_receipt(ctx):
     ]),Spacer(1,4*mm)]
     story += [section("DETALLE DEL PAGO"),Spacer(1,2*mm),info_table([
         ("Fecha de pago",p.payment_date.strftime("%d/%m/%Y"),"Forma de pago",p.payment_method),
-        ("Referencia",p.reference,"Valor recibido",money(p.amount)),
-        ("Saldo anterior",money(ctx["previous_balance"]),"Saldo actual",money(ctx["balance_after"])),
-        ("Precio de venta",money(s.sale_price),"Entrada registrada",money(s.down_payment)),
+        ("Referencia interna",p.reference,"Comprobante bancario",p.bank_receipt),
+        ("Valor recibido",money(p.amount),"Saldo anterior",money(ctx["previous_balance"])),
+        ("Saldo actual",money(ctx["balance_after"]),"Precio de venta",money(s.sale_price)),
+        ("Entrada registrada",money(s.down_payment),"",""),
     ])]
     if p.notes:
         story += [Spacer(1,3*mm),Paragraph(f"<b>Observaciones:</b> {p.notes}",VALUE)]
@@ -135,6 +136,8 @@ def account_statement(ctx):
         ("Proyecto",ctx["project_name"],"Etapa",ctx["stage_name"]),
         ("Manzana",ctx["block_name"],"Lote",prop.lot_number),
         ("Precio de venta",money(s.sale_price),"Entrada",money(s.down_payment)),
+        ("Entrada fecha",s.down_payment_date.strftime("%d/%m/%Y") if s.down_payment_date else "-","Entrada forma",s.down_payment_method or "-"),
+        ("Referencia interna",s.down_payment_reference or "-","Comprobante bancario",s.down_payment_bank_receipt or "-"),
         ("Financiado",money(s.financed_amount),"Saldo pendiente",money(ctx["current_balance"])),
     ]),Spacer(1,4*mm),section("PLAN DE PAGOS"),Spacer(1,2*mm)]
     data=[[Paragraph("<b>#</b>",SMALL),Paragraph("<b>Vencimiento</b>",SMALL),Paragraph("<b>Cuota</b>",SMALL),Paragraph("<b>Pagado</b>",SMALL),Paragraph("<b>Saldo</b>",SMALL),Paragraph("<b>Estado</b>",SMALL)]]
@@ -160,13 +163,13 @@ def payments_certificate(ctx):
         ("Precio de venta",money(s.sale_price),"Total pagado",money(ctx["total_paid"])),
         ("Entrada",money(s.down_payment),"Saldo pendiente",money(ctx["current_balance"])),
     ]),Spacer(1,4*mm),section("PAGOS REGISTRADOS"),Spacer(1,2*mm)]
-    data=[[Paragraph("<b>Fecha</b>",SMALL),Paragraph("<b>Forma</b>",SMALL),Paragraph("<b>Referencia</b>",SMALL),Paragraph("<b>Valor</b>",SMALL)]]
+    data=[[Paragraph("<b>Fecha</b>",SMALL),Paragraph("<b>Forma</b>",SMALL),Paragraph("<b>Referencia interna</b>",SMALL),Paragraph("<b>Comp. bancario</b>",SMALL),Paragraph("<b>Valor</b>",SMALL)]]
     for p in ctx["payments"]:
-        data.append([p.payment_date.strftime("%d/%m/%Y"),p.payment_method,p.reference or "-",money(p.amount)])
+        data.append([p.payment_date.strftime("%d/%m/%Y"),p.payment_method,p.reference or "-",p.bank_receipt or "-",money(p.amount)])
     if len(data)==1:
-        data.append(["-","-","No existen pagos registrados",money(0)])
-    t=Table(data,colWidths=[35*mm,43*mm,58*mm,33*mm],repeatRows=1)
-    t.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),GREEN_DARK),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),0.35,HexColor("#DDE5DC")),("ALIGN",(3,1),(3,-1),"RIGHT"),("FONTSIZE",(0,1),(-1,-1),8),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
+        data.append(["-","-","-","No existen pagos registrados",money(0)])
+    t=Table(data,colWidths=[27*mm,32*mm,40*mm,42*mm,28*mm],repeatRows=1)
+    t.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),GREEN_DARK),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),0.35,HexColor("#DDE5DC")),("ALIGN",(4,1),(4,-1),"RIGHT"),("FONTSIZE",(0,1),(-1,-1),8),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
     story.append(t)
     final_block(story,ctx["verification_url"],d.verification_code,ctx["user_name"])
     return build_pdf(story,d.document_number)
