@@ -139,8 +139,9 @@ def collections_report(
     sales=db.scalars(select(Sale).where(Sale.active.is_(True))).all()
     for s in sales:
         if s.down_payment<=0: continue
-        if date_from and s.confirmation_date<date_from: continue
-        if date_to and s.confirmation_date>date_to: continue
+        down_date=s.down_payment_date or s.confirmation_date
+        if date_from and down_date<date_from: continue
+        if date_to and down_date>date_to: continue
         if stage_id and sale_stage_id(db,s)!=stage_id: continue
         c=db.get(Customer,s.customer_id); prop=db.get(Property,s.property_id)
         block=db.get(Block,prop.block_id); stage=db.get(ProjectStage,block.stage_id)
