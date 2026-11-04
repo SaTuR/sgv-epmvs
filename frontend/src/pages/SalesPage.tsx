@@ -19,9 +19,13 @@ export default function SalesPage({permissions}:{permissions:string[]}){
   const [correctingDownPayment,setCorrectingDownPayment]=useState(false)
   const [newDownPayment,setNewDownPayment]=useState('0')
   const [downPaymentMode,setDownPaymentMode]=useState<'AUTO'|'MANUAL'>('AUTO')
+  const [downPaymentDate,setDownPaymentDate]=useState(today())
+  const [downPaymentMethod,setDownPaymentMethod]=useState('TRANSFERENCIA')
+  const [downPaymentReference,setDownPaymentReference]=useState('')
+  const [downPaymentBankReceipt,setDownPaymentBankReceipt]=useState('')
   const [runtimeSettings,setRuntimeSettings]=useState<any>({reservation_default_days:3,currency_symbol:'$'})
   const [resForm,setResForm]=useState<any>({customer_id:'',property_id:'',reservation_date:today(),expires_on:'',notes:''})
-  const [saleForm,setSaleForm]=useState<any>({customer_id:'',property_id:'',reservation_id:'',sale_price:'',down_payment:'0',installment_count:'12',frequency:'MONTHLY',first_due_date:today(),notes:''})
+  const [saleForm,setSaleForm]=useState<any>({customer_id:'',property_id:'',reservation_id:'',sale_price:'',down_payment:'0',down_payment_date:today(),down_payment_method:'TRANSFERENCIA',down_payment_reference:'',down_payment_bank_receipt:'',installment_count:'12',frequency:'MONTHLY',first_due_date:today(),notes:''})
   const [customerSearch,setCustomerSearch]=useState('')
   const [propertySearch,setPropertySearch]=useState('')
   const [reservationFilter,setReservationFilter]=useState('')
@@ -73,13 +77,19 @@ export default function SalesPage({permissions}:{permissions:string[]}){
     setCustomerSearch('')
     setPropertySearch('')
     const prop=properties.find((p:any)=>p.id===r.property_id)
-    setSaleForm({...saleForm,customer_id:r.customer_id,property_id:r.property_id,reservation_id:r.id,sale_price:String(prop?.total_price||''),first_due_date:today()})
+    setSaleForm({...saleForm,customer_id:r.customer_id,property_id:r.property_id,reservation_id:r.id,sale_price:String(prop?.total_price||''),down_payment:'0',down_payment_date:today(),down_payment_method:'TRANSFERENCIA',down_payment_reference:'',down_payment_bank_receipt:'',first_due_date:today()})
     setOpen('sale')
   }
 
   async function saveSale(e:FormEvent){
     e.preventDefault()
-    await apiFetch('/sales',{method:'POST',body:JSON.stringify({...saleForm,sale_price:Number(saleForm.sale_price),down_payment:Number(saleForm.down_payment||0),installment_count:Number(saleForm.installment_count)})})
+    const down=Number(saleForm.down_payment||0)
+    if(down>0){
+      if(!saleForm.down_payment_reference?.trim()){alert('La referencia interna de la entrada es obligatoria.');return}
+      if(!saleForm.down_payment_bank_receipt?.trim()){alert('El comprobante bancario de la entrada es obligatorio.');return}
+      if(!saleForm.down_payment_method){alert('La forma de pago de la entrada es obligatoria.');return}
+    }
+    await apiFetch('/sales',{method:'POST',body:JSON.stringify({...saleForm,sale_price:Number(saleForm.sale_price),down_payment:down,installment_count:Number(saleForm.installment_count)})})
     setOpen(null);await load()
   }
 
@@ -89,6 +99,10 @@ export default function SalesPage({permissions}:{permissions:string[]}){
     setCorrectingDownPayment(false)
     setNewDownPayment(String(s.down_payment||0))
     setDownPaymentMode('AUTO')
+    setDownPaymentDate(s.down_payment_date||s.confirmation_date||today())
+    setDownPaymentMethod(s.down_payment_method||'TRANSFERENCIA')
+    setDownPaymentReference(s.down_payment_reference||'')
+    setDownPaymentBankReceipt(s.down_payment_bank_receipt||'')
     setInstallments(await apiFetch('/sales/'+s.id+'/installments'))
     setOpen('installments')
   }
@@ -105,6 +119,11 @@ export default function SalesPage({permissions}:{permissions:string[]}){
       return
     }
     const expected=Number(selectedSale.sale_price)-value
+    if(value>0){
+      if(!downPaymentReference.trim()){alert('La referencia interna de la entrada es obligatoria.');return}
+      if(!downPaymentBankReceipt.trim()){alert('El comprobante bancario de la entrada es obligatorio.');return}
+      if(!downPaymentMethod){alert('La forma de pago de la entrada es obligatoria.');return}
+    }
     if(downPaymentMode==='MANUAL'){
       const total=installments.reduce((sum:number,i:any)=>sum+Number(i.amount||0),0)
       if(Math.abs(total-expected)>0.005){
@@ -117,6 +136,10 @@ export default function SalesPage({permissions}:{permissions:string[]}){
         method:'PUT',
         body:JSON.stringify({
           down_payment:value,
+          down_payment_date:value>0?downPaymentDate:null,
+          down_payment_method:value>0?downPaymentMethod:null,
+          down_payment_reference:value>0?downPaymentReference.trim():null,
+          down_payment_bank_receipt:value>0?downPaymentBankReceipt.trim():null,
           mode:downPaymentMode,
           installments:downPaymentMode==='MANUAL'
             ? installments.map((i:any)=>({id:i.id,due_date:i.due_date,amount:Number(i.amount)}))
@@ -234,16 +257,33 @@ export default function SalesPage({permissions}:{permissions:string[]}){
       <label className="sm:col-span-2">Cliente<div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="Buscar cliente" className="w-full rounded-xl border py-2.5 pl-9 pr-3"/></div><select required value={saleForm.customer_id} onChange={e=>setSaleForm({...saleForm,customer_id:e.target.value})} className="mt-2 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{filteredCustomers.map(c=><option key={c.id} value={c.id}>{c.identification} · {c.full_name}</option>)}</select></label>
       <label className="sm:col-span-2">Predio<div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={propertySearch} onChange={e=>setPropertySearch(e.target.value)} placeholder="Buscar predio" className="w-full rounded-xl border py-2.5 pl-9 pr-3"/></div><select required value={saleForm.property_id} onChange={e=>{const p=available.find((x:any)=>x.id===e.target.value);setSaleForm({...saleForm,property_id:e.target.value,sale_price:String(p?.total_price||'')})}} className="mt-2 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{filteredAvailableForSale.map((p:any)=><option key={p.id} value={p.id}>{p.code} · {p.block} / {p.lot_number}</option>)}</select></label>
       <label>Precio de venta<input required type="number" step="0.01" value={saleForm.sale_price} onChange={e=>setSaleForm({...saleForm,sale_price:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
-      <label>Entrada<input type="number" step="0.01" value={saleForm.down_payment} onChange={e=>setSaleForm({...saleForm,down_payment:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
-      <label>Número de cuotas<input required type="number" min="1" value={saleForm.installment_count} onChange={e=>setSaleForm({...saleForm,installment_count:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
-      <label>Primera cuota<input required type="date" value={saleForm.first_due_date} onChange={e=>setSaleForm({...saleForm,first_due_date:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+      <label>Entrada<input type="number" step="0.01" min="0" max={Number(saleForm.sale_price||0)} value={saleForm.down_payment} onChange={e=>setSaleForm({...saleForm,down_payment:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+      {Number(saleForm.down_payment||0)>0&&<>
+        <label>Fecha de entrada<input required type="date" value={saleForm.down_payment_date} onChange={e=>setSaleForm({...saleForm,down_payment_date:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+        <label>Forma de pago<select required value={saleForm.down_payment_method} onChange={e=>setSaleForm({...saleForm,down_payment_method:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option>EFECTIVO</option><option>TRANSFERENCIA</option><option>DEPOSITO</option><option>CHEQUE</option><option>OTRA</option></select></label>
+        <label className="sm:col-span-2">Referencia interna<input required value={saleForm.down_payment_reference} onChange={e=>setSaleForm({...saleForm,down_payment_reference:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5" placeholder="Comprobante interno entregado por Ventas"/></label>
+        <label className="sm:col-span-2">Comprobante bancario<input required value={saleForm.down_payment_bank_receipt} onChange={e=>setSaleForm({...saleForm,down_payment_bank_receipt:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5" placeholder="Número de comprobante generado por depósito o transferencia"/></label>
+      </>}
+      {Number(saleForm.down_payment||0)<Number(saleForm.sale_price||0)&&<>
+        <label>Número de cuotas<input required type="number" min="1" value={saleForm.installment_count} onChange={e=>setSaleForm({...saleForm,installment_count:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+        <label>Primera cuota<input required type="date" value={saleForm.first_due_date} onChange={e=>setSaleForm({...saleForm,first_due_date:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
+      </>}
+      {Number(saleForm.down_payment||0)===Number(saleForm.sale_price||0)&&Number(saleForm.sale_price||0)>0&&<div className="sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">Pago total en la entrada. El predio quedará PAGADO y no se generarán cuotas.</div>}
     </div><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={()=>setOpen(null)} className="rounded-xl border px-4 py-2.5">Cancelar</button><button className="rounded-xl bg-[#3A6C32] px-5 py-2.5 font-semibold text-white">Confirmar compra</button></div></form></div>}
 
-    {open==='installments'&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-6"><div className="flex items-center justify-between gap-4"><div><h3 className="text-xl font-semibold">Plan de pagos</h3><p className="mt-1 text-sm text-slate-500">{selectedSale?.customer} · {selectedSale?.property}</p></div><div className="flex items-center gap-2">{!editingInstallments&&!correctingDownPayment&&<><button onClick={()=>{setCorrectingDownPayment(true);setNewDownPayment(String(selectedSale?.down_payment||0));setDownPaymentMode('AUTO')}} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800">Corregir entrada</button><button onClick={()=>setEditingInstallments(true)} className="rounded-xl border px-4 py-2 text-sm font-semibold">Editar cuotas</button></>}{editingInstallments&&!correctingDownPayment&&<><button onClick={()=>{setEditingInstallments(false);showInstallments(selectedSale)}} className="rounded-xl border px-4 py-2 text-sm">Cancelar</button><button onClick={saveInstallments} className="rounded-xl bg-[#3A6C32] px-4 py-2 text-sm font-semibold text-white">Guardar cambios</button></>}{correctingDownPayment&&<><button onClick={()=>{setCorrectingDownPayment(false);setEditingInstallments(false);showInstallments(selectedSale)}} className="rounded-xl border px-4 py-2 text-sm">Cancelar</button><button onClick={saveDownPayment} className="rounded-xl bg-[#3A6C32] px-4 py-2 text-sm font-semibold text-white">Guardar corrección</button></>}<button onClick={()=>setOpen(null)}>✕</button></div></div>{correctingDownPayment&&<div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+    {open==='installments'&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-6"><div className="flex items-center justify-between gap-4"><div><h3 className="text-xl font-semibold">Plan de pagos</h3><p className="mt-1 text-sm text-slate-500">{selectedSale?.customer} · {selectedSale?.property}</p></div><div className="flex items-center gap-2">{!editingInstallments&&!correctingDownPayment&&<><button onClick={()=>{setCorrectingDownPayment(true);setNewDownPayment(String(selectedSale?.down_payment||0));setDownPaymentMode('AUTO');setDownPaymentDate(selectedSale?.down_payment_date||selectedSale?.confirmation_date||today());setDownPaymentMethod(selectedSale?.down_payment_method||'TRANSFERENCIA');setDownPaymentReference(selectedSale?.down_payment_reference||'');setDownPaymentBankReceipt(selectedSale?.down_payment_bank_receipt||'')}} className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800">Corregir entrada</button><button onClick={()=>setEditingInstallments(true)} className="rounded-xl border px-4 py-2 text-sm font-semibold">Editar cuotas</button></>}{editingInstallments&&!correctingDownPayment&&<><button onClick={()=>{setEditingInstallments(false);showInstallments(selectedSale)}} className="rounded-xl border px-4 py-2 text-sm">Cancelar</button><button onClick={saveInstallments} className="rounded-xl bg-[#3A6C32] px-4 py-2 text-sm font-semibold text-white">Guardar cambios</button></>}{correctingDownPayment&&<><button onClick={()=>{setCorrectingDownPayment(false);setEditingInstallments(false);showInstallments(selectedSale)}} className="rounded-xl border px-4 py-2 text-sm">Cancelar</button><button onClick={saveDownPayment} className="rounded-xl bg-[#3A6C32] px-4 py-2 text-sm font-semibold text-white">Guardar corrección</button></>}<button onClick={()=>setOpen(null)}>✕</button></div></div>{correctingDownPayment&&<div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
   <div className="grid gap-4 md:grid-cols-[220px_1fr]">
-    <label className="text-sm font-medium text-slate-700">Nueva entrada
-      <input type="number" min="0" max={Number(selectedSale?.sale_price||0)} step="0.01" value={newDownPayment} onChange={e=>setNewDownPayment(e.target.value)} className="mt-1 w-full rounded-xl border bg-white px-3 py-2.5"/>
-    </label>
+    <div className="space-y-3">
+      <label className="block text-sm font-medium text-slate-700">Nueva entrada
+        <input type="number" min="0" max={Number(selectedSale?.sale_price||0)} step="0.01" value={newDownPayment} onChange={e=>setNewDownPayment(e.target.value)} className="mt-1 w-full rounded-xl border bg-white px-3 py-2.5"/>
+      </label>
+      {Number(newDownPayment||0)>0&&<>
+        <label className="block text-sm font-medium text-slate-700">Fecha<input required type="date" value={downPaymentDate} onChange={e=>setDownPaymentDate(e.target.value)} className="mt-1 w-full rounded-xl border bg-white px-3 py-2.5"/></label>
+        <label className="block text-sm font-medium text-slate-700">Forma<select value={downPaymentMethod} onChange={e=>setDownPaymentMethod(e.target.value)} className="mt-1 w-full rounded-xl border bg-white px-3 py-2.5"><option>EFECTIVO</option><option>TRANSFERENCIA</option><option>DEPOSITO</option><option>CHEQUE</option><option>OTRA</option></select></label>
+        <label className="block text-sm font-medium text-slate-700">Referencia interna<input required value={downPaymentReference} onChange={e=>setDownPaymentReference(e.target.value)} className="mt-1 w-full rounded-xl border bg-white px-3 py-2.5"/></label>
+        <label className="block text-sm font-medium text-slate-700">Comprobante bancario<input required value={downPaymentBankReceipt} onChange={e=>setDownPaymentBankReceipt(e.target.value)} className="mt-1 w-full rounded-xl border bg-white px-3 py-2.5"/></label>
+      </>}
+    </div>
     <div>
       <p className="text-sm font-medium text-slate-700">Cómo ajustar las cuotas</p>
       <div className="mt-1 grid gap-2 sm:grid-cols-2">
