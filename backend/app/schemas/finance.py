@@ -34,6 +34,13 @@ class PaymentCreate(BaseModel):
     bank_receipt:str=Field(min_length=1,max_length=120)
     notes:str|None=None
 
+class PaymentUpdate(BaseModel):
+    payment_date:date
+    payment_method:str=Field(min_length=1,max_length=30)
+    reference:str=Field(min_length=1,max_length=120)
+    bank_receipt:str=Field(min_length=1,max_length=120)
+    notes:str|None=None
+
 
 class InstallmentUpdateItem(BaseModel):
     id: str
