@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_permission
 from app.models import Customer, ElectronicInvoice, Installment, IssuedDocument, Payment, PaymentAllocation, Property, PropertyStatus, Reservation, Sale, SystemSetting, User
-from app.schemas.finance import DownPaymentUpdate, InstallmentsUpdate, PaymentCreate, ReservationCreate, SaleCreate
+from app.schemas.finance import DownPaymentUpdate, InstallmentsUpdate, PaymentCreate, PaymentUpdate, ReservationCreate, SaleCreate
 from app.services.audit import audit
 from app.services.electronic_invoice import sri_billing_ready
 
@@ -371,6 +371,68 @@ def create_payment(payload:PaymentCreate,request:Request,db:Session=Depends(get_
     db.commit(); db.refresh(payment)
     return {"id":str(payment.id)}
 
+
+@router.put("/payments/{payment_id}")
+def update_payment(
+    payment_id:uuid.UUID,
+    payload:PaymentUpdate,
+    request:Request,
+    db:Session=Depends(get_db),
+    current:User=Depends(require_permission("payments.edit"))
+):
+    payment=db.get(Payment,payment_id)
+    if not payment or payment.status!="POSTED":
+        raise HTTPException(404,"Pago no encontrado")
+
+    sale=db.get(Sale,payment.sale_id)
+    if not sale or not sale.active:
+        raise HTTPException(409,"La venta asociada no está disponible")
+
+    invoice=db.scalar(select(ElectronicInvoice).where(ElectronicInvoice.sale_id==sale.id))
+    if invoice:
+        raise HTTPException(409,"No se puede modificar el pago porque la venta ya tiene factura electrónica asociada")
+
+    reference=payload.reference.strip()
+    bank_receipt=payload.bank_receipt.strip()
+    method=payload.payment_method.strip()
+
+    if not reference:
+        raise HTTPException(400,"La referencia interna es obligatoria")
+    if not bank_receipt:
+        raise HTTPException(400,"El comprobante bancario es obligatorio")
+    if not method:
+        raise HTTPException(400,"La forma de pago es obligatoria")
+
+    old={
+        "payment_date":str(payment.payment_date),
+        "payment_method":payment.payment_method,
+        "reference":payment.reference,
+        "bank_receipt":payment.bank_receipt,
+        "notes":payment.notes,
+        "amount":str(payment.amount),
+    }
+
+    payment.payment_date=payload.payment_date
+    payment.payment_method=method
+    payment.reference=reference
+    payment.bank_receipt=bank_receipt
+    payment.notes=payload.notes
+
+    audit(db,current,"PAYMENT_UPDATE","payment",payment.id,{
+        "sale_id":str(sale.id),
+        "old":old,
+        "new":{
+            "payment_date":str(payment.payment_date),
+            "payment_method":payment.payment_method,
+            "reference":payment.reference,
+            "bank_receipt":payment.bank_receipt,
+            "notes":payment.notes,
+            "amount":str(payment.amount),
+        },
+    },request)
+
+    db.commit()
+    return {"ok":True,"message":"Datos del pago actualizados correctamente"}
 
 @router.delete("/payments/{payment_id}")
 def delete_payment(
