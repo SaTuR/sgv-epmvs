@@ -162,6 +162,7 @@ def payments_certificate(ctx):
         ("Manzana",ctx["block_name"],"Lote",prop.lot_number),
         ("Precio de venta",money(s.sale_price),"Total pagado",money(ctx["total_paid"])),
         ("Entrada",money(s.down_payment),"Saldo pendiente",money(ctx["current_balance"])),
+        ("Entrada ref. interna",s.down_payment_reference or "-","Entrada comp. bancario",s.down_payment_bank_receipt or "-"),
     ]),Spacer(1,4*mm),section("PAGOS REGISTRADOS"),Spacer(1,2*mm)]
     data=[[Paragraph("<b>Fecha</b>",SMALL),Paragraph("<b>Forma</b>",SMALL),Paragraph("<b>Referencia interna</b>",SMALL),Paragraph("<b>Comp. bancario</b>",SMALL),Paragraph("<b>Valor</b>",SMALL)]]
     for p in ctx["payments"]:
