@@ -144,8 +144,10 @@ def collections_report(
         if stage_id and sale_stage_id(db,s)!=stage_id: continue
         c=db.get(Customer,s.customer_id); prop=db.get(Property,s.property_id)
         block=db.get(Block,prop.block_id); stage=db.get(ProjectStage,block.stage_id)
-        out.append({"date":s.confirmation_date,"customer":c.full_name,"identification":c.identification,
-            "stage":stage.name,"property":prop.code,"method":"ENTRADA","reference":"",
+        out.append({"date":s.down_payment_date or s.confirmation_date,"customer":c.full_name,"identification":c.identification,
+            "stage":stage.name,"property":prop.code,"method":s.down_payment_method or "ENTRADA",
+            "reference":s.down_payment_reference or "",
+            "bank_receipt":s.down_payment_bank_receipt or "",
             "amount":float(s.down_payment)})
 
     for p in payments:
@@ -158,14 +160,15 @@ def collections_report(
         block=db.get(Block,prop.block_id); stage=db.get(ProjectStage,block.stage_id)
         out.append({"date":p.payment_date,"customer":c.full_name,"identification":c.identification,
             "stage":stage.name,"property":prop.code,"method":p.payment_method,"reference":p.reference or "",
+            "bank_receipt":p.bank_receipt or "",
             "amount":float(p.amount)})
     return out
 
 @router.get("/collections.csv")
 def collections_csv(date_from:date|None=None,date_to:date|None=None,stage_id:uuid.UUID|None=None,db:Session=Depends(get_db),_:User=Depends(require_permission("reports.view"))):
     data=collections_report(date_from,date_to,stage_id,db,_)
-    rows=[[x["date"],x["customer"],x["identification"],x["stage"],x["property"],x["method"],x["reference"],x["amount"]] for x in data]
-    return csv_response(rows,["Fecha","Cliente","Identificación","Etapa","Predio","Forma de pago","Referencia","Valor"],"recaudacion.csv")
+    rows=[[x["date"],x["customer"],x["identification"],x["stage"],x["property"],x["method"],x["reference"],x["bank_receipt"],x["amount"]] for x in data]
+    return csv_response(rows,["Fecha","Cliente","Identificación","Etapa","Predio","Forma de pago","Referencia interna","Comprobante bancario","Valor"],"recaudacion.csv")
 
 @router.get("/receivables")
 def receivables_report(stage_id:uuid.UUID|None=None,db:Session=Depends(get_db),_:User=Depends(require_permission("reports.view"))):
