@@ -97,9 +97,20 @@ def create_sale(payload:SaleCreate,request:Request,db:Session=Depends(get_db),cu
             raise HTTPException(409,"La reserva no corresponde al cliente y predio seleccionados")
 
     if payload.down_payment>payload.sale_price: raise HTTPException(400,"La entrada no puede superar el precio de venta")
+    if money(payload.down_payment)>Decimal("0.00"):
+        if not payload.down_payment_reference or not payload.down_payment_reference.strip():
+            raise HTTPException(400,"La referencia interna de la entrada es obligatoria")
+        if not payload.down_payment_bank_receipt or not payload.down_payment_bank_receipt.strip():
+            raise HTTPException(400,"El comprobante bancario de la entrada es obligatorio")
+        if not payload.down_payment_method or not payload.down_payment_method.strip():
+            raise HTTPException(400,"La forma de pago de la entrada es obligatoria")
     financed=money(payload.sale_price-payload.down_payment)
     sale=Sale(customer_id=customer.id,property_id=prop.id,reservation_id=reservation.id if reservation else None,
       confirmation_date=payload.confirmation_date or date.today(),sale_price=money(payload.sale_price),down_payment=money(payload.down_payment),
+      down_payment_date=(payload.down_payment_date or payload.confirmation_date or date.today()) if money(payload.down_payment)>0 else None,
+      down_payment_method=(payload.down_payment_method or "").strip() or None,
+      down_payment_reference=(payload.down_payment_reference or "").strip() or None,
+      down_payment_bank_receipt=(payload.down_payment_bank_receipt or "").strip() or None,
       financed_amount=financed,installment_count=payload.installment_count if financed>0 else 0,frequency=payload.frequency,first_due_date=payload.first_due_date,notes=payload.notes)
     if financed>0:
         base=money(financed/Decimal(payload.installment_count))
@@ -112,7 +123,7 @@ def create_sale(payload:SaleCreate,request:Request,db:Session=Depends(get_db),cu
     prop.status_id=prop_status(db,"PAYING" if financed>0 else "PAID").id
     if reservation: reservation.active=False
     db.add(sale); db.flush()
-    audit(db,current,"SALE_CONFIRM","sale",sale.id,{"customer_id":customer.id,"property_id":prop.id,"sale_price":sale.sale_price,"down_payment":sale.down_payment,"installment_count":sale.installment_count},request)
+    audit(db,current,"SALE_CONFIRM","sale",sale.id,{"customer_id":customer.id,"property_id":prop.id,"sale_price":sale.sale_price,"down_payment":sale.down_payment,"down_payment_date":str(sale.down_payment_date) if sale.down_payment_date else None,"down_payment_method":sale.down_payment_method,"down_payment_reference":sale.down_payment_reference,"down_payment_bank_receipt":sale.down_payment_bank_receipt,"installment_count":sale.installment_count},request)
     db.commit(); db.refresh(sale)
     return {"id":str(sale.id)}
 
@@ -173,6 +184,13 @@ def update_down_payment(
         raise HTTPException(409,"No se puede corregir la entrada porque la venta ya tiene factura electrónica asociada")
 
     new_down=money(payload.down_payment)
+    if new_down>Decimal("0.00"):
+        if not payload.down_payment_reference or not payload.down_payment_reference.strip():
+            raise HTTPException(400,"La referencia interna de la entrada es obligatoria")
+        if not payload.down_payment_bank_receipt or not payload.down_payment_bank_receipt.strip():
+            raise HTTPException(400,"El comprobante bancario de la entrada es obligatorio")
+        if not payload.down_payment_method or not payload.down_payment_method.strip():
+            raise HTTPException(400,"La forma de pago de la entrada es obligatoria")
     if new_down>money(sale.sale_price):
         raise HTTPException(400,"La entrada no puede superar el precio de venta")
 
@@ -181,6 +199,10 @@ def update_down_payment(
     old_snapshot={
         "down_payment":str(sale.down_payment),
         "financed_amount":str(sale.financed_amount),
+        "down_payment_date":str(sale.down_payment_date) if sale.down_payment_date else None,
+        "down_payment_method":sale.down_payment_method,
+        "down_payment_reference":sale.down_payment_reference,
+        "down_payment_bank_receipt":sale.down_payment_bank_receipt,
         "installments":[
             {"id":str(i.id),"number":i.number,"due_date":str(i.due_date),"amount":str(i.amount),"paid_amount":str(i.paid_amount)}
             for i in rows
@@ -228,6 +250,10 @@ def update_down_payment(
             row.status="PAID" if money(row.paid_amount)>=amount else ("PARTIAL" if money(row.paid_amount)>0 else "PENDING")
 
     sale.down_payment=new_down
+    sale.down_payment_date=(payload.down_payment_date or sale.confirmation_date or date.today()) if new_down>0 else None
+    sale.down_payment_method=(payload.down_payment_method or "").strip() or None
+    sale.down_payment_reference=(payload.down_payment_reference or "").strip() or None
+    sale.down_payment_bank_receipt=(payload.down_payment_bank_receipt or "").strip() or None
     sale.financed_amount=financed
     if financed>0:
         sale.installment_count=len(rows)
@@ -244,6 +270,10 @@ def update_down_payment(
         "new":{
             "down_payment":str(sale.down_payment),
             "financed_amount":str(sale.financed_amount),
+            "down_payment_date":str(sale.down_payment_date) if sale.down_payment_date else None,
+            "down_payment_method":sale.down_payment_method,
+            "down_payment_reference":sale.down_payment_reference,
+            "down_payment_bank_receipt":sale.down_payment_bank_receipt,
             "mode":payload.mode,
             "installments":[
                 {"id":str(i.id),"number":i.number,"due_date":str(i.due_date),"amount":str(i.amount),"paid_amount":str(i.paid_amount)}
@@ -318,7 +348,11 @@ def create_payment(payload:PaymentCreate,request:Request,db:Session=Depends(get_
     installments=db.scalars(select(Installment).where(Installment.sale_id==sale.id,Installment.status!="PAID").order_by(Installment.due_date,Installment.number)).all()
     outstanding=sum((i.amount-i.paid_amount for i in installments),Decimal("0"))
     if remaining>outstanding: raise HTTPException(400,"El pago supera el saldo pendiente")
-    payment=Payment(sale_id=sale.id,payment_date=payload.payment_date or date.today(),amount=remaining,payment_method=payload.payment_method,reference=payload.reference,notes=payload.notes)
+    if not payload.reference.strip():
+        raise HTTPException(400,"La referencia interna es obligatoria")
+    if not payload.bank_receipt.strip():
+        raise HTTPException(400,"El comprobante bancario es obligatorio")
+    payment=Payment(sale_id=sale.id,payment_date=payload.payment_date or date.today(),amount=remaining,payment_method=payload.payment_method,reference=payload.reference.strip(),bank_receipt=payload.bank_receipt.strip(),notes=payload.notes)
     db.add(payment); db.flush()
     for i in installments:
         if remaining<=0: break
@@ -330,7 +364,7 @@ def create_payment(payload:PaymentCreate,request:Request,db:Session=Depends(get_
         remaining=money(remaining-applied)
     if all(i.status=="PAID" for i in db.scalars(select(Installment).where(Installment.sale_id==sale.id)).all()):
         prop=db.get(Property,sale.property_id); prop.status_id=prop_status(db,"PAID").id
-    audit(db,current,"PAYMENT_CREATE","payment",payment.id,{"sale_id":sale.id,"amount":payment.amount,"payment_method":payment.payment_method,"reference":payment.reference},request)
+    audit(db,current,"PAYMENT_CREATE","payment",payment.id,{"sale_id":sale.id,"amount":payment.amount,"payment_method":payment.payment_method,"reference":payment.reference,"bank_receipt":payment.bank_receipt},request)
     db.commit(); db.refresh(payment)
     return {"id":str(payment.id)}
 
@@ -397,6 +431,7 @@ def delete_payment(
         "amount":str(payment.amount),
         "payment_method":payment.payment_method,
         "reference":payment.reference,
+        "bank_receipt":payment.bank_receipt,
         "allocations":snapshot,
     },request)
 
@@ -411,7 +446,7 @@ def payments(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
     for p in rows:
         sale=db.get(Sale,p.sale_id); c=db.get(Customer,sale.customer_id) if sale else None; prop=db.get(Property,sale.property_id) if sale else None
         out.append({"id":str(p.id),"payment_date":p.payment_date,"amount":float(p.amount),"payment_method":p.payment_method,
-          "reference":p.reference,"sale_id":str(p.sale_id),"customer":c.full_name if c else "","property":prop.code if prop else ""})
+          "reference":p.reference,"bank_receipt":p.bank_receipt,"sale_id":str(p.sale_id),"customer":c.full_name if c else "","property":prop.code if prop else ""})
     return out
 
 @router.get("/accounts-receivable")
