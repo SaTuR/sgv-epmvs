@@ -4,7 +4,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from app.api.deps import get_db, require_permission
+from app.api.deps import get_db, require_any_permission, require_permission
 from app.models import Customer, Property, Sale, SaleCommission, Seller, User
 from app.schemas.commercial import CommissionStatusUpdate, SellerCreate, SellerUpdate
 from app.services.audit import audit
@@ -15,7 +15,7 @@ def money(v):
     return Decimal(v).quantize(Decimal("0.01"),rounding=ROUND_HALF_UP)
 
 @router.get("/sellers")
-def list_sellers(active_only:bool=False,db:Session=Depends(get_db),_:User=Depends(require_permission("sellers.view"))):
+def list_sellers(active_only:bool=False,db:Session=Depends(get_db),_:User=Depends(require_any_permission("sellers.view","sales.manage"))):
     stmt=select(Seller).order_by(Seller.last_name,Seller.first_name)
     if active_only:
         stmt=stmt.where(Seller.active.is_(True))
