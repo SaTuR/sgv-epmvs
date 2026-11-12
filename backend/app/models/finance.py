@@ -23,6 +23,7 @@ class Sale(Base):
     customer_id:Mapped[uuid.UUID]=mapped_column(UUID(as_uuid=True),ForeignKey("customers.id",ondelete="RESTRICT"),index=True)
     property_id:Mapped[uuid.UUID]=mapped_column(UUID(as_uuid=True),ForeignKey("properties.id",ondelete="RESTRICT"),unique=True,index=True)
     reservation_id:Mapped[uuid.UUID|None]=mapped_column(UUID(as_uuid=True),ForeignKey("reservations.id",ondelete="SET NULL"),nullable=True)
+    seller_id:Mapped[uuid.UUID|None]=mapped_column(UUID(as_uuid=True),ForeignKey("sellers.id",ondelete="RESTRICT"),nullable=True,index=True)
     confirmation_date:Mapped[date]=mapped_column(Date,default=date.today)
     sale_price:Mapped[Decimal]=mapped_column(Numeric(14,2))
     down_payment:Mapped[Decimal]=mapped_column(Numeric(14,2),default=0)
