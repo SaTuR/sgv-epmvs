@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_permission
-from app.models import Customer, ElectronicInvoice, Installment, IssuedDocument, Payment, PaymentAllocation, Property, PropertyStatus, Reservation, Sale, SystemSetting, User
+from app.models import Customer, ElectronicInvoice, Installment, IssuedDocument, Payment, PaymentAllocation, Property, PropertyStatus, Reservation, Sale, SaleCommission, Seller, SystemSetting, User
 from app.schemas.finance import DownPaymentUpdate, InstallmentsUpdate, PaymentCreate, PaymentUpdate, ReservationCreate, SaleCreate
 from app.services.audit import audit
 from app.services.electronic_invoice import sri_billing_ready
@@ -35,6 +35,8 @@ def reservations(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
 def create_reservation(payload:ReservationCreate,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("sales.manage"))):
     customer=db.get(Customer,uuid.UUID(payload.customer_id)); prop=db.get(Property,uuid.UUID(payload.property_id))
     if not customer or not prop: raise HTTPException(404,"Cliente o predio no encontrado")
+    seller=db.get(Seller,uuid.UUID(payload.seller_id))
+    if not seller or not seller.active: raise HTTPException(400,"Debe seleccionar un vendedor activo")
     if prop.status.code!="AVAILABLE": raise HTTPException(409,"El predio ya no está disponible")
     r=Reservation(customer_id=customer.id,property_id=prop.id,reservation_date=payload.reservation_date or date.today(),expires_on=payload.expires_on,notes=payload.notes)
     prop.status_id=prop_status(db,"RESERVED").id
@@ -60,7 +62,7 @@ def sales(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
     sri_ready,_=sri_billing_ready(cfg)
     out=[]
     for s in rows:
-        c=db.get(Customer,s.customer_id); p=db.get(Property,s.property_id)
+        c=db.get(Customer,s.customer_id); p=db.get(Property,s.property_id); seller=db.get(Seller,s.seller_id) if s.seller_id else None
         installment_paid=sum((i.paid_amount for i in s.installments),Decimal("0"))
         paid=s.down_payment+installment_paid
         total=sum((i.amount for i in s.installments),Decimal("0"))
@@ -71,7 +73,7 @@ def sales(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
         balance=money(total-installment_paid)
         out.append({"id":str(s.id),"customer_id":str(s.customer_id),"customer":c.full_name if c else "",
           "property_id":str(s.property_id),"property":p.code if p else "","property_status":p.status.code if p else "",
-          "confirmation_date":s.confirmation_date,
+          "confirmation_date":s.confirmation_date,"seller_id":str(s.seller_id) if s.seller_id else None,"seller":seller.full_name if seller else "",
           "sale_price":float(s.sale_price),"down_payment":float(s.down_payment),
           "down_payment_date":s.down_payment_date,"down_payment_method":s.down_payment_method,
           "down_payment_reference":s.down_payment_reference,"down_payment_bank_receipt":s.down_payment_bank_receipt,
@@ -108,7 +110,7 @@ def create_sale(payload:SaleCreate,request:Request,db:Session=Depends(get_db),cu
         if not payload.down_payment_method or not payload.down_payment_method.strip():
             raise HTTPException(400,"La forma de pago de la entrada es obligatoria")
     financed=money(payload.sale_price-payload.down_payment)
-    sale=Sale(customer_id=customer.id,property_id=prop.id,reservation_id=reservation.id if reservation else None,
+    sale=Sale(customer_id=customer.id,property_id=prop.id,reservation_id=reservation.id if reservation else None,seller_id=seller.id,
       confirmation_date=payload.confirmation_date or date.today(),sale_price=money(payload.sale_price),down_payment=money(payload.down_payment),
       down_payment_date=(payload.down_payment_date or payload.confirmation_date or date.today()) if money(payload.down_payment)>0 else None,
       down_payment_method=(payload.down_payment_method or "").strip() or None,
@@ -126,7 +128,13 @@ def create_sale(payload:SaleCreate,request:Request,db:Session=Depends(get_db),cu
     prop.status_id=prop_status(db,"PAYING" if financed>0 else "PAID").id
     if reservation: reservation.active=False
     db.add(sale); db.flush()
-    audit(db,current,"SALE_CONFIRM","sale",sale.id,{"customer_id":customer.id,"property_id":prop.id,"sale_price":sale.sale_price,"down_payment":sale.down_payment,"down_payment_date":str(sale.down_payment_date) if sale.down_payment_date else None,"down_payment_method":sale.down_payment_method,"down_payment_reference":sale.down_payment_reference,"down_payment_bank_receipt":sale.down_payment_bank_receipt,"installment_count":sale.installment_count},request)
+    commission_rate=Decimal(seller.default_commission_rate)
+    commission_amount=money(sale.sale_price*commission_rate/Decimal("100"))
+    db.add(SaleCommission(
+        sale_id=sale.id,seller_id=seller.id,commission_base=sale.sale_price,
+        commission_rate=commission_rate,commission_amount=commission_amount,status="PENDING"
+    ))
+    audit(db,current,"SALE_CONFIRM","sale",sale.id,{"customer_id":customer.id,"property_id":prop.id,"sale_price":sale.sale_price,"down_payment":sale.down_payment,"down_payment_date":str(sale.down_payment_date) if sale.down_payment_date else None,"down_payment_method":sale.down_payment_method,"down_payment_reference":sale.down_payment_reference,"down_payment_bank_receipt":sale.down_payment_bank_receipt,"installment_count":sale.installment_count,"seller_id":str(seller.id),"seller":seller.full_name,"commission_rate":str(commission_rate),"commission_amount":str(commission_amount)},request)
     db.commit(); db.refresh(sale)
     return {"id":str(sale.id)}
 
