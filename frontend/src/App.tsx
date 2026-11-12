@@ -17,6 +17,8 @@ import CertificatesPage from './pages/CertificatesPage'
 import SettingsPage from './pages/SettingsPage'
 import ElectronicInvoicesPage from './pages/ElectronicInvoicesPage'
 import NotificationsPage from './pages/NotificationsPage'
+import SellersPage from './pages/SellersPage'
+import CommissionsPage from './pages/CommissionsPage'
 import type { SessionUser } from './types'
 
 export default function App(){
@@ -42,6 +44,8 @@ export default function App(){
     if(active==='Reservas y ventas')return <SalesPage permissions={user?.permissions||[]}/>
     if(active==='Pagos')return <PaymentsPage permissions={user?.permissions||[]}/>
     if(active==='Cartera')return <ReceivablesPage/>
+    if(active==='Vendedores')return <SellersPage permissions={user?.permissions||[]}/>
+    if(active==='Comisiones')return <CommissionsPage permissions={user?.permissions||[]}/>
     if(active==='Certificados')return <CertificatesPage/>
     if(active==='Facturación electrónica')return <ElectronicInvoicesPage/>
     if(active==='Reportes')return <ReportsPage/>
