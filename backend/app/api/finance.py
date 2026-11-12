@@ -35,8 +35,6 @@ def reservations(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
 def create_reservation(payload:ReservationCreate,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("sales.manage"))):
     customer=db.get(Customer,uuid.UUID(payload.customer_id)); prop=db.get(Property,uuid.UUID(payload.property_id))
     if not customer or not prop: raise HTTPException(404,"Cliente o predio no encontrado")
-    seller=db.get(Seller,uuid.UUID(payload.seller_id))
-    if not seller or not seller.active: raise HTTPException(400,"Debe seleccionar un vendedor activo")
     if prop.status.code!="AVAILABLE": raise HTTPException(409,"El predio ya no está disponible")
     r=Reservation(customer_id=customer.id,property_id=prop.id,reservation_date=payload.reservation_date or date.today(),expires_on=payload.expires_on,notes=payload.notes)
     prop.status_id=prop_status(db,"RESERVED").id
@@ -89,6 +87,8 @@ def sales(db:Session=Depends(get_db),_:User=Depends(get_current_user)):
 def create_sale(payload:SaleCreate,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("sales.manage"))):
     customer=db.get(Customer,uuid.UUID(payload.customer_id)); prop=db.get(Property,uuid.UUID(payload.property_id))
     if not customer or not prop: raise HTTPException(404,"Cliente o predio no encontrado")
+    seller=db.get(Seller,uuid.UUID(payload.seller_id))
+    if not seller or not seller.active: raise HTTPException(400,"Debe seleccionar un vendedor activo")
     if prop.status.code not in {"AVAILABLE","RESERVED"}: raise HTTPException(409,"El predio no puede confirmarse para compra")
 
     reservation=None
