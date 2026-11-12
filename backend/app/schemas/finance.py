@@ -13,6 +13,7 @@ class SaleCreate(BaseModel):
     customer_id:str
     property_id:str
     reservation_id:str|None=None
+    seller_id:str
     confirmation_date:date|None=None
     sale_price:Decimal=Field(gt=0)
     down_payment:Decimal=Field(default=0,ge=0)
