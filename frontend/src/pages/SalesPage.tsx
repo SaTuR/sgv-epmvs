@@ -12,6 +12,7 @@ export default function SalesPage({permissions}:{permissions:string[]}){
   const [properties,setProperties]=useState<any[]>([])
   const [reservations,setReservations]=useState<any[]>([])
   const [sales,setSales]=useState<any[]>([])
+  const [sellers,setSellers]=useState<any[]>([])
   const [open,setOpen]=useState<'reservation'|'sale'|'installments'|null>(null)
   const [installments,setInstallments]=useState<any[]>([])
   const [selectedSale,setSelectedSale]=useState<any>(null)
@@ -25,7 +26,7 @@ export default function SalesPage({permissions}:{permissions:string[]}){
   const [downPaymentBankReceipt,setDownPaymentBankReceipt]=useState('')
   const [runtimeSettings,setRuntimeSettings]=useState<any>({reservation_default_days:3,currency_symbol:'$'})
   const [resForm,setResForm]=useState<any>({customer_id:'',property_id:'',reservation_date:today(),expires_on:'',notes:''})
-  const [saleForm,setSaleForm]=useState<any>({customer_id:'',property_id:'',reservation_id:'',sale_price:'',down_payment:'0',down_payment_date:today(),down_payment_method:'TRANSFERENCIA',down_payment_reference:'',down_payment_bank_receipt:'',installment_count:'12',frequency:'MONTHLY',first_due_date:today(),notes:''})
+  const [saleForm,setSaleForm]=useState<any>({customer_id:'',property_id:'',reservation_id:'',seller_id:'',sale_price:'',down_payment:'0',down_payment_date:today(),down_payment_method:'TRANSFERENCIA',down_payment_reference:'',down_payment_bank_receipt:'',installment_count:'12',frequency:'MONTHLY',first_due_date:today(),notes:''})
   const [customerSearch,setCustomerSearch]=useState('')
   const [propertySearch,setPropertySearch]=useState('')
   const [reservationFilter,setReservationFilter]=useState('')
@@ -35,8 +36,8 @@ export default function SalesPage({permissions}:{permissions:string[]}){
   const [saleStatusFilter,setSaleStatusFilter]=useState('ALL')
 
   async function load(){
-    const [c,p,r,s]=await Promise.all([apiFetch('/customers'),apiFetch('/properties'),apiFetch('/reservations'),apiFetch('/sales')])
-    setCustomers(c);setProperties(p);setReservations(r);setSales(s)
+    const [c,p,r,s,v]=await Promise.all([apiFetch('/customers'),apiFetch('/properties'),apiFetch('/reservations'),apiFetch('/sales'),apiFetch('/sellers?active_only=true')])
+    setCustomers(c);setProperties(p);setReservations(r);setSales(s);setSellers(v)
   }
   useEffect(()=>{load();apiFetch('/settings/runtime').then(setRuntimeSettings).catch(()=>{})},[])
 
@@ -77,7 +78,7 @@ export default function SalesPage({permissions}:{permissions:string[]}){
     setCustomerSearch('')
     setPropertySearch('')
     const prop=properties.find((p:any)=>p.id===r.property_id)
-    setSaleForm({...saleForm,customer_id:r.customer_id,property_id:r.property_id,reservation_id:r.id,sale_price:String(prop?.total_price||''),down_payment:'0',down_payment_date:today(),down_payment_method:'TRANSFERENCIA',down_payment_reference:'',down_payment_bank_receipt:'',first_due_date:today()})
+    setSaleForm({...saleForm,customer_id:r.customer_id,property_id:r.property_id,reservation_id:r.id,seller_id:'',sale_price:String(prop?.total_price||''),down_payment:'0',down_payment_date:today(),down_payment_method:'TRANSFERENCIA',down_payment_reference:'',down_payment_bank_receipt:'',first_due_date:today()})
     setOpen('sale')
   }
 
@@ -256,6 +257,7 @@ export default function SalesPage({permissions}:{permissions:string[]}){
     {open==='sale'&&<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"><form onSubmit={saveSale} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6"><div className="flex items-center gap-2"><BadgeCheck className="text-[#3A6C32]"/><h3 className="text-xl font-semibold">Confirmar compra</h3></div><div className="mt-5 grid gap-4 sm:grid-cols-2">
       <label className="sm:col-span-2">Cliente<div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={customerSearch} onChange={e=>setCustomerSearch(e.target.value)} placeholder="Buscar cliente" className="w-full rounded-xl border py-2.5 pl-9 pr-3"/></div><select required value={saleForm.customer_id} onChange={e=>setSaleForm({...saleForm,customer_id:e.target.value})} className="mt-2 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{filteredCustomers.map(c=><option key={c.id} value={c.id}>{c.identification} · {c.full_name}</option>)}</select></label>
       <label className="sm:col-span-2">Predio<div className="relative mt-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={propertySearch} onChange={e=>setPropertySearch(e.target.value)} placeholder="Buscar predio" className="w-full rounded-xl border py-2.5 pl-9 pr-3"/></div><select required value={saleForm.property_id} onChange={e=>{const p=available.find((x:any)=>x.id===e.target.value);setSaleForm({...saleForm,property_id:e.target.value,sale_price:String(p?.total_price||'')})}} className="mt-2 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione</option>{filteredAvailableForSale.map((p:any)=><option key={p.id} value={p.id}>{p.code} · {p.block} / {p.lot_number}</option>)}</select></label>
+      <label className="sm:col-span-2">Vendedor<select required value={saleForm.seller_id||''} onChange={e=>setSaleForm({...saleForm,seller_id:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option value="">Seleccione vendedor</option>{sellers.map((v:any)=><option key={v.id} value={v.id}>{v.identification} · {v.full_name} · Comisión {Number(v.default_commission_rate).toFixed(2)}%</option>)}</select></label>
       <label>Precio de venta<input required type="number" step="0.01" value={saleForm.sale_price} onChange={e=>setSaleForm({...saleForm,sale_price:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
       <label>Entrada<input type="number" step="0.01" min="0" max={Number(saleForm.sale_price||0)} value={saleForm.down_payment} onChange={e=>setSaleForm({...saleForm,down_payment:e.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5"/></label>
       {Number(saleForm.down_payment||0)>0&&<>
