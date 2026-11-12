@@ -7,10 +7,11 @@ from app.models.audit import AuditLog
 from app.models.settings import SystemSetting
 from app.models.electronic_invoice import ElectronicInvoice
 from app.models.notifications import NotificationSetting, NotificationTemplate, NotificationLog
+from app.models.commercial import Seller, SaleCommission
 
 __all__ = [
     "User","Role","Permission","user_roles","role_permissions","Project","ProjectStage",
     "Customer","StageMap","Block","PropertyStatus","Property","Reservation","Sale",
     "Installment","Payment","PaymentAllocation","PropertyMapZone","IssuedDocument","AuditLog","SystemSetting","ElectronicInvoice",
-    "NotificationSetting","NotificationTemplate","NotificationLog",
+    "NotificationSetting","NotificationTemplate","NotificationLog","Seller","SaleCommission",
 ]
