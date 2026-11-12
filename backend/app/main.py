@@ -9,6 +9,7 @@ from app.api.security_admin import router as security_router
 from app.api.settings import router as settings_router
 from app.api.electronic_invoices import router as electronic_invoices_router
 from app.api.notifications import router as notifications_router
+from app.api.commercial import router as commercial_router
 from app.config import settings
 from app.db import db_health
 
@@ -23,6 +24,7 @@ app.include_router(security_router)
 app.include_router(settings_router)
 app.include_router(electronic_invoices_router)
 app.include_router(notifications_router)
+app.include_router(commercial_router)
 
 @app.get("/api/health")
 def health():
