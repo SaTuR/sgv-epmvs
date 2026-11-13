@@ -60,3 +60,7 @@ class DownPaymentUpdate(BaseModel):
     down_payment_bank_receipt: str | None = None
     mode: str = Field(default="AUTO", pattern="^(AUTO|MANUAL)$")
     installments: list[InstallmentUpdateItem] | None = None
+
+
+class SellerAssignment(BaseModel):
+    seller_id: str
