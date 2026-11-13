@@ -15,7 +15,7 @@ def money(v):
     return Decimal(v).quantize(Decimal("0.01"),rounding=ROUND_HALF_UP)
 
 @router.get("/sellers")
-def list_sellers(active_only:bool=False,db:Session=Depends(get_db),_:User=Depends(require_any_permission("sellers.view","sales.manage"))):
+def list_sellers(active_only:bool=False,db:Session=Depends(get_db),_:User=Depends(require_any_permission("sellers.view","sales.manage","reports.view"))):
     stmt=select(Seller).order_by(Seller.last_name,Seller.first_name)
     if active_only:
         stmt=stmt.where(Seller.active.is_(True))
