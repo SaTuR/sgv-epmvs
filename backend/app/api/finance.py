@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_db, require_permission
 from app.models import Customer, ElectronicInvoice, Installment, IssuedDocument, Payment, PaymentAllocation, Property, PropertyStatus, Reservation, Sale, SaleCommission, Seller, SystemSetting, User
-from app.schemas.finance import DownPaymentUpdate, InstallmentsUpdate, PaymentCreate, PaymentUpdate, ReservationCreate, SaleCreate
+from app.schemas.finance import DownPaymentUpdate, InstallmentsUpdate, PaymentCreate, PaymentUpdate, ReservationCreate, SaleCreate, SellerAssignment
 from app.services.audit import audit
 from app.services.electronic_invoice import sri_billing_ready
 
@@ -137,6 +137,81 @@ def create_sale(payload:SaleCreate,request:Request,db:Session=Depends(get_db),cu
     audit(db,current,"SALE_CONFIRM","sale",sale.id,{"customer_id":customer.id,"property_id":prop.id,"sale_price":sale.sale_price,"down_payment":sale.down_payment,"down_payment_date":str(sale.down_payment_date) if sale.down_payment_date else None,"down_payment_method":sale.down_payment_method,"down_payment_reference":sale.down_payment_reference,"down_payment_bank_receipt":sale.down_payment_bank_receipt,"installment_count":sale.installment_count,"seller_id":str(seller.id),"seller":seller.full_name,"commission_rate":str(commission_rate),"commission_amount":str(commission_amount)},request)
     db.commit(); db.refresh(sale)
     return {"id":str(sale.id)}
+
+@router.put("/sales/{sale_id}/seller")
+def assign_seller(
+    sale_id:uuid.UUID,
+    payload:SellerAssignment,
+    request:Request,
+    db:Session=Depends(get_db),
+    current:User=Depends(require_permission("sales.assign_seller"))
+):
+    sale=db.get(Sale,sale_id)
+    if not sale or not sale.active:
+        raise HTTPException(404,"Venta no encontrada")
+
+    seller=db.get(Seller,uuid.UUID(payload.seller_id))
+    if not seller or not seller.active:
+        raise HTTPException(400,"Debe seleccionar un vendedor activo")
+
+    commission=db.scalar(select(SaleCommission).where(SaleCommission.sale_id==sale.id))
+    old_seller=db.get(Seller,sale.seller_id) if sale.seller_id else None
+
+    if commission and commission.status!="PENDING":
+        raise HTTPException(
+            409,
+            "No se puede cambiar el vendedor porque la comisión ya fue aprobada, pagada o anulada"
+        )
+
+    old_snapshot={
+        "seller_id":str(sale.seller_id) if sale.seller_id else None,
+        "seller":old_seller.full_name if old_seller else None,
+        "commission_id":str(commission.id) if commission else None,
+        "commission_rate":str(commission.commission_rate) if commission else None,
+        "commission_amount":str(commission.commission_amount) if commission else None,
+        "commission_status":commission.status if commission else None,
+    }
+
+    sale.seller_id=seller.id
+    commission_rate=Decimal(seller.default_commission_rate)
+    commission_amount=money(sale.sale_price*commission_rate/Decimal("100"))
+
+    if commission:
+        commission.seller_id=seller.id
+        commission.commission_base=sale.sale_price
+        commission.commission_rate=commission_rate
+        commission.commission_amount=commission_amount
+    else:
+        commission=SaleCommission(
+            sale_id=sale.id,
+            seller_id=seller.id,
+            commission_base=sale.sale_price,
+            commission_rate=commission_rate,
+            commission_amount=commission_amount,
+            status="PENDING",
+        )
+        db.add(commission)
+        db.flush()
+
+    audit(db,current,"SALE_SELLER_ASSIGN","sale",sale.id,{
+        "old":old_snapshot,
+        "new":{
+            "seller_id":str(seller.id),
+            "seller":seller.full_name,
+            "commission_id":str(commission.id),
+            "commission_rate":str(commission.commission_rate),
+            "commission_amount":str(commission.commission_amount),
+            "commission_status":commission.status,
+        },
+    },request)
+
+    db.commit()
+    return {
+        "ok":True,
+        "message":"Vendedor asignado y comisión actualizada correctamente",
+        "seller":seller.full_name,
+        "commission_amount":float(commission.commission_amount),
+    }
 
 @router.delete("/sales/{sale_id}")
 def delete_sale(sale_id:uuid.UUID,request:Request,db:Session=Depends(get_db),current:User=Depends(require_permission("system.admin"))):
