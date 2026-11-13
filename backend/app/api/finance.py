@@ -154,7 +154,16 @@ def assign_seller(
     if not seller or not seller.active:
         raise HTTPException(400,"Debe seleccionar un vendedor activo")
 
-    commission=db.scalar(select(SaleCommission).where(SaleCommission.sale_id==sale.id))
+    commission=db.scalar(
+        select(SaleCommission)
+        .where(SaleCommission.sale_id==sale.id,SaleCommission.status!="CANCELLED")
+        .order_by(SaleCommission.created_at.desc())
+    )
+    last_cancelled=db.scalar(
+        select(SaleCommission)
+        .where(SaleCommission.sale_id==sale.id,SaleCommission.status=="CANCELLED")
+        .order_by(SaleCommission.created_at.desc())
+    )
     old_seller=db.get(Seller,sale.seller_id) if sale.seller_id else None
 
     if commission and commission.status in {"APPROVED","PAID"}:
@@ -166,10 +175,10 @@ def assign_seller(
     old_snapshot={
         "seller_id":str(sale.seller_id) if sale.seller_id else None,
         "seller":old_seller.full_name if old_seller else None,
-        "commission_id":str(commission.id) if commission else None,
-        "commission_rate":str(commission.commission_rate) if commission else None,
-        "commission_amount":str(commission.commission_amount) if commission else None,
-        "commission_status":commission.status if commission else None,
+        "commission_id":str(commission.id) if commission else (str(last_cancelled.id) if last_cancelled else None),
+        "commission_rate":str(commission.commission_rate) if commission else (str(last_cancelled.commission_rate) if last_cancelled else None),
+        "commission_amount":str(commission.commission_amount) if commission else (str(last_cancelled.commission_amount) if last_cancelled else None),
+        "commission_status":commission.status if commission else (last_cancelled.status if last_cancelled else None),
     }
 
     sale.seller_id=seller.id
@@ -181,17 +190,6 @@ def assign_seller(
         commission.commission_base=sale.sale_price
         commission.commission_rate=commission_rate
         commission.commission_amount=commission_amount
-    elif commission and commission.status=="CANCELLED":
-        commission=SaleCommission(
-            sale_id=sale.id,
-            seller_id=seller.id,
-            commission_base=sale.sale_price,
-            commission_rate=commission_rate,
-            commission_amount=commission_amount,
-            status="PENDING",
-        )
-        db.add(commission)
-        db.flush()
     else:
         commission=SaleCommission(
             sale_id=sale.id,
