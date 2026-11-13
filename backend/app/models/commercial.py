@@ -26,7 +26,7 @@ class Seller(Base):
 class SaleCommission(Base):
     __tablename__="sale_commissions"
     id:Mapped[uuid.UUID]=mapped_column(UUID(as_uuid=True),primary_key=True,default=uuid.uuid4)
-    sale_id:Mapped[uuid.UUID]=mapped_column(UUID(as_uuid=True),ForeignKey("sales.id",ondelete="CASCADE"),unique=True,index=True)
+    sale_id:Mapped[uuid.UUID]=mapped_column(UUID(as_uuid=True),ForeignKey("sales.id",ondelete="CASCADE"),index=True)
     seller_id:Mapped[uuid.UUID]=mapped_column(UUID(as_uuid=True),ForeignKey("sellers.id",ondelete="RESTRICT"),index=True)
     commission_base:Mapped[Decimal]=mapped_column(Numeric(14,2))
     commission_rate:Mapped[Decimal]=mapped_column(Numeric(7,4))
