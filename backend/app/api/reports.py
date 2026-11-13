@@ -1,14 +1,18 @@
 import csv
 import io
 import uuid
+from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
 from app.api.deps import get_current_user, get_db, require_permission
-from app.models import Block, Customer, ElectronicInvoice, Installment, Payment, ProjectStage, Property, PropertyStatus, Sale, User
+from app.models import Block, Customer, ElectronicInvoice, Installment, Payment, ProjectStage, Property, PropertyStatus, Sale, SaleCommission, Seller, User
+from app.services.report_pdfs import commissions_pdf
 
 router=APIRouter(prefix="/api/reports",tags=["Reportes"])
 
@@ -195,3 +199,194 @@ def receivables_csv(stage_id:uuid.UUID|None=None,db:Session=Depends(get_db),_:Us
     data=receivables_report(stage_id,db,_)
     rows=[[x["customer"],x["identification"],x["stage"],x["block"],x["property"],x["sale_price"],x["balance"],x["overdue"],x["overdue_installments"],x["next_due"] or ""] for x in data]
     return csv_response(rows,["Cliente","Identificación","Etapa","Manzana","Predio","Precio venta","Saldo","Vencido","Cuotas vencidas","Próximo vencimiento"],"cartera.csv")
+
+
+COMMISSION_STATUS_LABELS={
+    "PENDING":"Pendiente",
+    "APPROVED":"Aprobada",
+    "PAID":"Pagada",
+    "CANCELLED":"Anulada",
+}
+
+def commission_detail_rows(
+    db:Session,
+    seller_id:uuid.UUID|None=None,
+    status:str|None=None,
+    stage_id:uuid.UUID|None=None,
+    date_from:date|None=None,
+    date_to:date|None=None,
+):
+    rows=db.scalars(select(SaleCommission).order_by(SaleCommission.created_at.desc())).all()
+    out=[]
+    for commission in rows:
+        if seller_id and commission.seller_id!=seller_id: continue
+        if status and status!="ALL" and commission.status!=status: continue
+        sale=db.get(Sale,commission.sale_id)
+        if not sale or not sale.active: continue
+        if date_from and sale.confirmation_date<date_from: continue
+        if date_to and sale.confirmation_date>date_to: continue
+        prop=db.get(Property,sale.property_id)
+        block=db.get(Block,prop.block_id) if prop else None
+        stage=db.get(ProjectStage,block.stage_id) if block else None
+        if stage_id and (not stage or stage.id!=stage_id): continue
+        seller=db.get(Seller,commission.seller_id)
+        customer=db.get(Customer,sale.customer_id)
+        out.append({
+            "id":str(commission.id),
+            "date":sale.confirmation_date,
+            "seller_id":str(commission.seller_id),
+            "seller":seller.full_name if seller else "",
+            "customer":customer.full_name if customer else "",
+            "identification":customer.identification if customer else "",
+            "stage_id":str(stage.id) if stage else None,
+            "stage":stage.name if stage else "",
+            "property":prop.code if prop else "",
+            "sale_price":float(sale.sale_price),
+            "commission_base":float(commission.commission_base),
+            "commission_rate":float(commission.commission_rate),
+            "commission_amount":float(commission.commission_amount),
+            "status":commission.status,
+            "status_label":COMMISSION_STATUS_LABELS.get(commission.status,commission.status),
+            "approved_at":commission.approved_at,
+            "paid_at":commission.paid_at,
+            "payment_reference":commission.payment_reference or "",
+        })
+    return out
+
+def commission_summary_from_detail(detail):
+    grouped={}
+    totals={
+        "sales_count":0,
+        "sold_amount":0.0,
+        "generated":0.0,
+        "pending":0.0,
+        "approved":0.0,
+        "paid":0.0,
+        "cancelled":0.0,
+    }
+    seen_sales=set()
+    sold_by_seller=defaultdict(float)
+    seen_sales_by_seller=defaultdict(set)
+
+    for row in detail:
+        sid=row["seller_id"]
+        if sid not in grouped:
+            grouped[sid]={
+                "seller_id":sid,"seller":row["seller"],"sales_count":0,"sold_amount":0.0,
+                "generated":0.0,"pending":0.0,"approved":0.0,"paid":0.0,"cancelled":0.0
+            }
+        g=grouped[sid]
+        sale_key=(row["property"],row["date"],row["customer"])
+        if sale_key not in seen_sales_by_seller[sid]:
+            seen_sales_by_seller[sid].add(sale_key)
+            g["sales_count"]+=1
+            g["sold_amount"]+=row["sale_price"]
+        if row["status"]!="CANCELLED":
+            g["generated"]+=row["commission_amount"]
+        if row["status"]=="PENDING": g["pending"]+=row["commission_amount"]
+        elif row["status"]=="APPROVED": g["approved"]+=row["commission_amount"]
+        elif row["status"]=="PAID": g["paid"]+=row["commission_amount"]
+        elif row["status"]=="CANCELLED": g["cancelled"]+=row["commission_amount"]
+
+        if sale_key not in seen_sales:
+            seen_sales.add(sale_key)
+            totals["sales_count"]+=1
+            totals["sold_amount"]+=row["sale_price"]
+        if row["status"]!="CANCELLED":
+            totals["generated"]+=row["commission_amount"]
+        if row["status"]=="PENDING": totals["pending"]+=row["commission_amount"]
+        elif row["status"]=="APPROVED": totals["approved"]+=row["commission_amount"]
+        elif row["status"]=="PAID": totals["paid"]+=row["commission_amount"]
+        elif row["status"]=="CANCELLED": totals["cancelled"]+=row["commission_amount"]
+
+    sellers=sorted(grouped.values(),key=lambda x:(-x["generated"],x["seller"]))
+    for row in sellers:
+        for key in ("sold_amount","generated","pending","approved","paid","cancelled"):
+            row[key]=round(row[key],2)
+    for key in ("sold_amount","generated","pending","approved","paid","cancelled"):
+        totals[key]=round(totals[key],2)
+    return {"totals":totals,"sellers":sellers}
+
+@router.get("/commissions")
+def commissions_report(
+    seller_id:uuid.UUID|None=None,status:str|None=None,stage_id:uuid.UUID|None=None,
+    date_from:date|None=None,date_to:date|None=None,view:str="summary",
+    db:Session=Depends(get_db),_:User=Depends(require_permission("reports.view"))
+):
+    detail=commission_detail_rows(db,seller_id,status,stage_id,date_from,date_to)
+    if view=="detail":
+        return {"totals":commission_summary_from_detail(detail)["totals"],"rows":detail}
+    return commission_summary_from_detail(detail)
+
+@router.get("/commissions.csv")
+def commissions_csv(
+    seller_id:uuid.UUID|None=None,status:str|None=None,stage_id:uuid.UUID|None=None,
+    date_from:date|None=None,date_to:date|None=None,
+    db:Session=Depends(get_db),_:User=Depends(require_permission("reports.view"))
+):
+    detail=commission_detail_rows(db,seller_id,status,stage_id,date_from,date_to)
+    rows=[[x["date"],x["seller"],x["customer"],x["identification"],x["stage"],x["property"],x["sale_price"],x["commission_rate"],x["commission_amount"],x["status_label"],x["payment_reference"]] for x in detail]
+    return csv_response(rows,["Fecha","Vendedor","Cliente","Identificación","Etapa","Predio","Venta","% Comisión","Comisión","Estado","Referencia pago"],"comisiones.csv")
+
+@router.get("/commissions.xlsx")
+def commissions_xlsx(
+    seller_id:uuid.UUID|None=None,status:str|None=None,stage_id:uuid.UUID|None=None,
+    date_from:date|None=None,date_to:date|None=None,
+    db:Session=Depends(get_db),_:User=Depends(require_permission("reports.view"))
+):
+    detail=commission_detail_rows(db,seller_id,status,stage_id,date_from,date_to)
+    summary=commission_summary_from_detail(detail)
+    wb=Workbook()
+    ws=wb.active
+    ws.title="Resumen"
+    headers=["Vendedor","Ventas","Valor vendido","Generada","Pendiente","Aprobada","Pagada","Anulada"]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font=Font(bold=True,color="FFFFFF")
+        cell.fill=PatternFill("solid",fgColor="3A6C32")
+        cell.alignment=Alignment(horizontal="center")
+    for r in summary["sellers"]:
+        ws.append([r["seller"],r["sales_count"],r["sold_amount"],r["generated"],r["pending"],r["approved"],r["paid"],r["cancelled"]])
+    ws.append([])
+    t=summary["totals"]
+    ws.append(["TOTAL",t["sales_count"],t["sold_amount"],t["generated"],t["pending"],t["approved"],t["paid"],t["cancelled"]])
+
+    wd=wb.create_sheet("Detalle")
+    dheaders=["Fecha","Vendedor","Cliente","Identificación","Etapa","Predio","Venta","% Comisión","Comisión","Estado","Referencia pago"]
+    wd.append(dheaders)
+    for cell in wd[1]:
+        cell.font=Font(bold=True,color="FFFFFF")
+        cell.fill=PatternFill("solid",fgColor="3A6C32")
+    for r in detail:
+        wd.append([r["date"],r["seller"],r["customer"],r["identification"],r["stage"],r["property"],r["sale_price"],r["commission_rate"],r["commission_amount"],r["status_label"],r["payment_reference"]])
+    for sheet in (ws,wd):
+        for col in sheet.columns:
+            max_len=max(len(str(cell.value or "")) for cell in col)
+            sheet.column_dimensions[col[0].column_letter].width=min(max(max_len+2,12),40)
+    buf=io.BytesIO()
+    wb.save(buf)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition":'attachment; filename="comisiones.xlsx"'}
+    )
+
+@router.get("/commissions.pdf")
+def commissions_pdf_report(
+    seller_id:uuid.UUID|None=None,status:str|None=None,stage_id:uuid.UUID|None=None,
+    date_from:date|None=None,date_to:date|None=None,
+    db:Session=Depends(get_db),_:User=Depends(require_permission("reports.view"))
+):
+    detail=commission_detail_rows(db,seller_id,status,stage_id,date_from,date_to)
+    summary=commission_summary_from_detail(detail)
+    filters=[]
+    if seller_id:
+        seller=db.get(Seller,seller_id);filters.append(f"Vendedor: {seller.full_name if seller else seller_id}")
+    if status and status!="ALL": filters.append(f"Estado: {COMMISSION_STATUS_LABELS.get(status,status)}")
+    if stage_id:
+        stage=db.get(ProjectStage,stage_id);filters.append(f"Etapa: {stage.name if stage else stage_id}")
+    if date_from: filters.append(f"Desde: {date_from}")
+    if date_to: filters.append(f"Hasta: {date_to}")
+    pdf=commissions_pdf(summary,detail," · ".join(filters) if filters else "Todos los registros")
+    return Response(pdf,media_type="application/pdf",headers={"Content-Disposition":'attachment; filename="comisiones.pdf"'})
+
