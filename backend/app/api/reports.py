@@ -278,7 +278,7 @@ def commission_summary_from_detail(detail):
             }
         g=grouped[sid]
         sale_key=row["sale_id"]
-        if sale_key not in seen_sales_by_seller[sid]:
+        if row["status"]!="CANCELLED" and sale_key not in seen_sales_by_seller[sid]:
             seen_sales_by_seller[sid].add(sale_key)
             g["sales_count"]+=1
             g["sold_amount"]+=row["sale_price"]
@@ -289,7 +289,7 @@ def commission_summary_from_detail(detail):
         elif row["status"]=="PAID": g["paid"]+=row["commission_amount"]
         elif row["status"]=="CANCELLED": g["cancelled"]+=row["commission_amount"]
 
-        if sale_key not in seen_sales:
+        if row["status"]!="CANCELLED" and sale_key not in seen_sales:
             seen_sales.add(sale_key)
             totals["sales_count"]+=1
             totals["sold_amount"]+=row["sale_price"]
