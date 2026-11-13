@@ -157,10 +157,10 @@ def assign_seller(
     commission=db.scalar(select(SaleCommission).where(SaleCommission.sale_id==sale.id))
     old_seller=db.get(Seller,sale.seller_id) if sale.seller_id else None
 
-    if commission and commission.status!="PENDING":
+    if commission and commission.status in {"APPROVED","PAID"}:
         raise HTTPException(
             409,
-            "No se puede cambiar el vendedor porque la comisión ya fue aprobada, pagada o anulada"
+            "No se puede cambiar el vendedor porque la comisión ya fue aprobada o pagada"
         )
 
     old_snapshot={
@@ -176,11 +176,22 @@ def assign_seller(
     commission_rate=Decimal(seller.default_commission_rate)
     commission_amount=money(sale.sale_price*commission_rate/Decimal("100"))
 
-    if commission:
+    if commission and commission.status=="PENDING":
         commission.seller_id=seller.id
         commission.commission_base=sale.sale_price
         commission.commission_rate=commission_rate
         commission.commission_amount=commission_amount
+    elif commission and commission.status=="CANCELLED":
+        commission=SaleCommission(
+            sale_id=sale.id,
+            seller_id=seller.id,
+            commission_base=sale.sale_price,
+            commission_rate=commission_rate,
+            commission_amount=commission_amount,
+            status="PENDING",
+        )
+        db.add(commission)
+        db.flush()
     else:
         commission=SaleCommission(
             sale_id=sale.id,
