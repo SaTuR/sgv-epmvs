@@ -233,6 +233,7 @@ def commission_detail_rows(
         customer=db.get(Customer,sale.customer_id)
         out.append({
             "id":str(commission.id),
+            "sale_id":str(sale.id),
             "date":sale.confirmation_date,
             "seller_id":str(commission.seller_id),
             "seller":seller.full_name if seller else "",
@@ -276,7 +277,7 @@ def commission_summary_from_detail(detail):
                 "generated":0.0,"pending":0.0,"approved":0.0,"paid":0.0,"cancelled":0.0
             }
         g=grouped[sid]
-        sale_key=(row["property"],row["date"],row["customer"])
+        sale_key=row["sale_id"]
         if sale_key not in seen_sales_by_seller[sid]:
             seen_sales_by_seller[sid].add(sale_key)
             g["sales_count"]+=1
@@ -358,7 +359,17 @@ def commissions_xlsx(
         cell.font=Font(bold=True,color="FFFFFF")
         cell.fill=PatternFill("solid",fgColor="3A6C32")
     for r in detail:
-        wd.append([r["date"],r["seller"],r["customer"],r["identification"],r["stage"],r["property"],r["sale_price"],r["commission_rate"],r["commission_amount"],r["status_label"],r["payment_reference"]])
+        wd.append([r["date"],r["seller"],r["customer"],r["identification"],r["stage"],r["property"],r["sale_price"],r["commission_rate"]/100,r["commission_amount"],r["status_label"],r["payment_reference"]])
+    ws.freeze_panes="A2"
+    wd.freeze_panes="A2"
+    for row in ws.iter_rows(min_row=2,min_col=3,max_col=8):
+        for cell in row: cell.number_format='$ #,##0.00'
+    for row in wd.iter_rows(min_row=2,min_col=7,max_col=7):
+        for cell in row: cell.number_format='$ #,##0.00'
+    for row in wd.iter_rows(min_row=2,min_col=8,max_col=8):
+        for cell in row: cell.number_format='0.00%'
+    for row in wd.iter_rows(min_row=2,min_col=9,max_col=9):
+        for cell in row: cell.number_format='$ #,##0.00'
     for sheet in (ws,wd):
         for col in sheet.columns:
             max_len=max(len(str(cell.value or "")) for cell in col)
