@@ -26,7 +26,6 @@ def report_header(filters_text):
     logo=Image(str(LOGO_PATH),width=48*mm,height=18.5*mm)
     right=Table([
         [Paragraph("REPORTE DE COMISIONES",TITLE)],
-        [Paragraph(f"Generado: {datetime.now():%d/%m/%Y %H:%M} · {filters_text}",HEADER_SMALL)],
     ],colWidths=[198*mm])
     right.setStyle(TableStyle([
         ("VALIGN",(0,0),(-1,-1),"TOP"),
