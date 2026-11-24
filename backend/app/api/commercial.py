@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, require_any_permission, require_permission
 from app.models import Customer, Property, Sale, SaleCommission, Seller, User
-from app.schemas.commercial import CommissionStatusUpdate, SellerCreate, SellerUpdate
+from app.schemas.commercial import CommissionPaymentReversal, CommissionStatusUpdate, SellerCreate, SellerUpdate
 from app.services.audit import audit
 
 router=APIRouter(prefix="/api",tags=["Vendedores y comisiones"])
@@ -93,3 +93,45 @@ def update_commission_status(commission_id:uuid.UUID,payload:CommissionStatusUpd
     audit(db,current,"COMMISSION_STATUS_UPDATE","sale_commission",row.id,{"old":old,"new":row.status,"payment_reference":row.payment_reference},request)
     db.commit()
     return {"ok":True}
+
+
+@router.post("/commissions/{commission_id}/reverse-payment")
+def reverse_commission_payment(
+    commission_id:uuid.UUID,
+    payload:CommissionPaymentReversal,
+    request:Request,
+    db:Session=Depends(get_db),
+    current:User=Depends(require_permission("commissions.pay"))
+):
+    row=db.get(SaleCommission,commission_id)
+    if not row:
+        raise HTTPException(404,"Comisión no encontrada")
+    if row.status!="PAID":
+        raise HTTPException(409,"Solo se puede reversar una comisión que esté pagada")
+
+    old={
+        "status":row.status,
+        "paid_at":row.paid_at.isoformat() if row.paid_at else None,
+        "payment_reference":row.payment_reference,
+        "notes":row.notes,
+    }
+
+    row.status="APPROVED"
+    row.paid_at=None
+    row.payment_reference=None
+    reason=payload.reason.strip()
+    row.notes=(row.notes+"\n" if row.notes else "")+"Reversión de pago: "+reason
+
+    audit(db,current,"COMMISSION_PAYMENT_REVERSE","sale_commission",row.id,{
+        "old":old,
+        "new":{
+            "status":row.status,
+            "paid_at":None,
+            "payment_reference":None,
+            "notes":row.notes,
+        },
+        "reason":reason,
+    },request)
+
+    db.commit()
+    return {"ok":True,"message":"Pago de comisión reversado. La comisión volvió a estado APROBADA"}
