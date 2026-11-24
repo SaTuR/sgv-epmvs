@@ -223,8 +223,9 @@ def commission_detail_rows(
         if status and status!="ALL" and commission.status!=status: continue
         sale=db.get(Sale,commission.sale_id)
         if not sale or not sale.active: continue
-        if date_from and sale.confirmation_date<date_from: continue
-        if date_to and sale.confirmation_date>date_to: continue
+        commission_date=sale.down_payment_date or sale.confirmation_date
+        if date_from and commission_date<date_from: continue
+        if date_to and commission_date>date_to: continue
         prop=db.get(Property,sale.property_id)
         block=db.get(Block,prop.block_id) if prop else None
         stage=db.get(ProjectStage,block.stage_id) if block else None
@@ -234,7 +235,7 @@ def commission_detail_rows(
         out.append({
             "id":str(commission.id),
             "sale_id":str(sale.id),
-            "date":sale.confirmation_date,
+            "date":commission_date,
             "seller_id":str(commission.seller_id),
             "seller":seller.full_name if seller else "",
             "customer":customer.full_name if customer else "",
