@@ -1,30 +1,56 @@
 from io import BytesIO
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from reportlab.lib import colors
 from reportlab.lib.colors import HexColor
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 GREEN_DARK=HexColor("#3A6C32")
 GREEN=HexColor("#52AD56")
 TEXT=HexColor("#1F2937")
 MUTED=HexColor("#64748B")
+LOGO_PATH=Path(__file__).resolve().parents[1]/"assets"/"epmvs-logo.webp"
 styles=getSampleStyleSheet()
-TITLE=ParagraphStyle("title",parent=styles["Heading1"],fontSize=16,textColor=GREEN_DARK)
-SMALL=ParagraphStyle("small",parent=styles["Normal"],fontSize=7.5,textColor=TEXT)
+TITLE=ParagraphStyle("title",parent=styles["Heading1"],fontName="Helvetica-Bold",fontSize=18,leading=21,textColor=GREEN_DARK,spaceAfter=3)
+SMALL=ParagraphStyle("small",parent=styles["Normal"],fontSize=8.5,leading=11,textColor=TEXT)
+HEADER_SMALL=ParagraphStyle("header-small",parent=styles["Normal"],fontSize=8.5,leading=11,textColor=TEXT)
 
 def money(v):
     return f"$ {Decimal(str(v or 0)):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def report_header(filters_text):
+    logo=Image(str(LOGO_PATH),width=48*mm,height=18.5*mm)
+    right=Table([
+        [Paragraph("REPORTE DE COMISIONES",TITLE)],
+        [Paragraph(f"Generado: {datetime.now():%d/%m/%Y %H:%M} · {filters_text}",HEADER_SMALL)],
+    ],colWidths=[198*mm])
+    right.setStyle(TableStyle([
+        ("VALIGN",(0,0),(-1,-1),"TOP"),
+        ("LEFTPADDING",(0,0),(-1,-1),0),
+        ("RIGHTPADDING",(0,0),(-1,-1),0),
+        ("TOPPADDING",(0,0),(-1,-1),0),
+        ("BOTTOMPADDING",(0,0),(-1,-1),0),
+    ]))
+    header=Table([[logo,right]],colWidths=[55*mm,198*mm])
+    header.setStyle(TableStyle([
+        ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+        ("LEFTPADDING",(0,0),(-1,-1),0),
+        ("RIGHTPADDING",(0,0),(-1,-1),4),
+        ("TOPPADDING",(0,0),(-1,-1),0),
+        ("BOTTOMPADDING",(0,0),(-1,-1),5),
+        ("LINEAFTER",(0,0),(0,0),1.2,GREEN_DARK),
+    ]))
+    return header
 
 def commissions_pdf(summary,detail,filters_text):
     buf=BytesIO()
     doc=SimpleDocTemplate(buf,pagesize=landscape(A4),rightMargin=12*mm,leftMargin=12*mm,topMargin=12*mm,bottomMargin=12*mm)
     story=[
-        Paragraph("REPORTE DE COMISIONES",TITLE),
-        Paragraph(f"Generado: {datetime.now():%d/%m/%Y %H:%M} · {filters_text}",SMALL),
+        report_header(filters_text),
         Spacer(1,4*mm),
     ]
     totals=summary["totals"]
