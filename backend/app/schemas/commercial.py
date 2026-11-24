@@ -17,3 +17,7 @@ class CommissionStatusUpdate(BaseModel):
     status:str=Field(pattern="^(PENDING|APPROVED|PAID|CANCELLED)$")
     payment_reference:str|None=None
     notes:str|None=None
+
+
+class CommissionPaymentReversal(BaseModel):
+    reason:str=Field(min_length=3,max_length=500)
